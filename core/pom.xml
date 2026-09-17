@@ -15,4 +15,9 @@
     <artifactId>core</artifactId>
     <packaging>pom</packaging>
 
+    <modules>
+        <module>ewm-service</module>
+    </modules>
+
 </project>
+

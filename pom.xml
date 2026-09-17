@@ -27,7 +27,6 @@
 
     <modules>
         <module>stats-service</module>
-        <module>ewm-service</module>
         <module>core</module>
         <module>infra</module>
     </modules>
@@ -247,3 +246,4 @@
     </profiles>
 
 </project>
+
