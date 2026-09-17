@@ -7,18 +7,11 @@
 
     <parent>
         <groupId>ru.practicum</groupId>
-        <artifactId>explore-with-me</artifactId>
+        <artifactId>infra</artifactId>
         <version>0.0.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>infra</artifactId>
-    <packaging>pom</packaging>
+    <artifactId>discovery-server</artifactId>
 
-    <modules>
-        <module>config-server</module>
-        <module>discovery-server</module>
-        <module>gateway-server</module>
-    </modules>
 </project>
-
