@@ -7,20 +7,11 @@
 
     <parent>
         <groupId>ru.practicum</groupId>
-        <artifactId>explore-with-me</artifactId>
+        <artifactId>core</artifactId>
         <version>0.0.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>core</artifactId>
-    <packaging>pom</packaging>
-
-    <modules>
-        <module>ewm-service</module>
-        <module>event-service</module>
-        <module>request-service</module>
-        <module>user-service</module>
-        <module>comment-service</module>
-    </modules>
+    <artifactId>event-service</artifactId>
 
 </project>
