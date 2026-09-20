@@ -1,17 +1,23 @@
 services:
-  stats-server:
-    build: ./stats-service/stats-server
+
+  discovery-server:
+    build:
+      context: .
+      dockerfile: infra/discovery-server/Dockerfile
     ports:
-      - "9090:9090"
+      - "8761:8761"
+
+  config-server:
+    build:
+      context: .
+      dockerfile: infra/config-server/Dockerfile
+    ports:
+      - "8888:8888"
     depends_on:
-      stats-db:
-        condition: service_healthy
+      - discovery-server
     environment:
-      POSTGRES_HOST: stats-db
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: stats
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      SERVER_PORT: 8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
 
   stats-db:
     image: postgres:17
@@ -45,22 +51,65 @@ services:
       timeout: 5s
       retries: 10
 
+  stats-server:
+    build:
+      context: .
+      dockerfile: stats-service/stats-server/Dockerfile
+    depends_on:
+      stats-db:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+    restart: on-failure
+    environment:
+      POSTGRES_HOST: stats-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: stats
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+
   ewm-service:
     build:
       context: .
-      dockerfile: ewm-service/Dockerfile
-    ports:
-      - "8080:8080"
+      dockerfile: core/ewm-service/Dockerfile
     depends_on:
       ewm-db:
         condition: service_healthy
+      config-server:
+        condition: service_started
       stats-server:
         condition: service_started
+    restart: on-failure
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://ewm-db:5432/ewm
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      STATS_SERVER_URL: http://stats-server:9090
+
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+
+  gateway-server:
+    build:
+      context: .
+      dockerfile: infra/gateway-server/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - config-server
+      - ewm-service
+    restart: on-failure
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
 volumes:
   stats-db-data:
