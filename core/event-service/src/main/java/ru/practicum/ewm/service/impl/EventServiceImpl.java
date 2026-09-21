@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dto.*;
 import ru.practicum.ewm.exception.ConflictException;
 import ru.practicum.ewm.exception.NotFoundException;
@@ -37,7 +38,7 @@ public class EventServiceImpl implements EventService {
     private static final long MIN_HOURS_BEFORE_EVENT = 2L;
 
     private final EventRepository eventRepository;
-    private final UserRepository userRepository;
+    private final UserClient userClient;
     private final CategoryRepository categoryRepository;
     private final RequestCountPort requestCountPort;
     private final CommentCountPort commentCountPort;
@@ -51,7 +52,7 @@ public class EventServiceImpl implements EventService {
 
         if (start != null && end != null && start.isAfter(end)) {
             throw new IllegalArgumentException(
-                    "Field: rangeEnd. Error: rangeEnd РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР·Р¶Рµ rangeStart."
+                    "Field: rangeEnd. Error: rangeEnd Р Т‘Р С•Р В»Р В¶Р ВµР Р… Р В±РЎвЂ№РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ rangeStart."
             );
         }
 
@@ -86,12 +87,11 @@ public class EventServiceImpl implements EventService {
         }
 
         Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, UserShortDto> users = getUsers(events);
         statsHelperService.hit(params.getRequest());
 
         List<EventShortDto> result = events.stream()
-                .map(event -> toShortDto(event,
-                        views.getOrDefault(event.getId(), 0L),
-                        commentsCount.getOrDefault(event.getId(), 0L)))
+                .map(event -> toShortDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
                 .toList();
 
         if ("VIEWS".equalsIgnoreCase(params.getSort())) {
@@ -132,31 +132,31 @@ public class EventServiceImpl implements EventService {
                 .getContent();
 
         Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, UserShortDto> users = getUsers(events);
         Map<Long, Long> commentsCount = getCommentsCount(events);
 
         return events.stream()
                 .map(event ->
-                        toShortDto(event, views.getOrDefault(event.getId(), 0L),
-                                commentsCount.getOrDefault(event.getId(), 0L)))
+                        toShortDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
                 .toList();
     }
 
     @Override
     public EventFullDto addEvent(Long userId, NewEventDto newEventDto) {
-        User initiator = getUser(userId);
+        UserShortDto initiator = getUser(userId);
         Category category = getCategory(newEventDto.getCategory());
 
         if (newEventDto.getEventDate()
                 .isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
+                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
             );
         }
 
         Event event = eventMapper.toEntity(newEventDto);
 
         event.setCategory(category);
-        event.setInitiator(initiator);
+        event.setInitiatorId(initiator.getId());
         event.setState(EventState.PENDING);
         event.setCreatedOn(LocalDateTime.now());
 
@@ -200,7 +200,7 @@ public class EventServiceImpl implements EventService {
         if (updateRequest.getEventDate() != null
                 && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
+                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
             );
         }
 
@@ -281,12 +281,11 @@ public class EventServiceImpl implements EventService {
         List<Event> events = eventRepository.findAll(specification, pageable).getContent();
 
         Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, UserShortDto> users = getUsers(events);
         Map<Long, Long> commentsCount = getCommentsCount(events);
 
         return events.stream()
-                .map(event -> toFullDto(event,
-                        views.getOrDefault(event.getId(), 0L),
-                        commentsCount.getOrDefault(event.getId(), 0L)))
+                .map(event -> toFullDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
                 .toList();
     }
 
@@ -330,7 +329,7 @@ public class EventServiceImpl implements EventService {
         if (updateRequest.getEventDate() != null
                 && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
+                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
             );
         }
 
@@ -361,12 +360,19 @@ public class EventServiceImpl implements EventService {
     }
 
     private EventShortDto toShortDto(Event event, long views, long commentsCount) {
+        return toShortDto(event, views, commentsCount, getUser(event.getInitiatorId()));
+    }
+
+    private EventShortDto toShortDto(Event event,
+                                     long views,
+                                     long commentsCount,
+                                     UserShortDto initiator) {
         EventShortDto dto = eventMapper.toShortDto(event);
 
+        dto.setInitiator(initiator);
         dto.setConfirmedRequests(
                 requestCountPort.countConfirmedRequests(event.getId())
         );
-
         dto.setViews(views);
         dto.setComments(commentsCount);
 
@@ -374,18 +380,41 @@ public class EventServiceImpl implements EventService {
     }
 
     private EventFullDto toFullDto(Event event, long views, long commentsCount) {
+        return toFullDto(event, views, commentsCount, getUser(event.getInitiatorId()));
+    }
+
+    private EventFullDto toFullDto(Event event,
+                                   long views,
+                                   long commentsCount,
+                                   UserShortDto initiator) {
         EventFullDto dto = eventMapper.toFullDto(event);
 
+        dto.setInitiator(initiator);
         dto.setConfirmedRequests(
                 requestCountPort.countConfirmedRequests(event.getId())
         );
-
         dto.setViews(views);
         dto.setComments(commentsCount);
 
         return dto;
     }
 
+    private Map<Long, UserShortDto> getUsers(List<Event> events) {
+        if (events == null || events.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> ids = events.stream()
+                .map(Event::getInitiatorId)
+                .distinct()
+                .toList();
+
+        return userClient.getUsers(ids).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        UserShortDto::getId,
+                        user -> user
+                ));
+    }
     private Map<Long, Long> getConfirmedRequests(List<Event> events) {
         if (events == null || events.isEmpty()) {
             return Map.of();
@@ -436,15 +465,17 @@ public class EventServiceImpl implements EventService {
     }
 
     private void checkUserExists(Long userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new NotFoundException("User with id=" + userId + " was not found");
-        }
+        getUser(userId);
     }
 
-    private User getUser(Long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new NotFoundException("User with id=" + userId + " was not found"));
+    private UserShortDto getUser(Long userId) {
+        UserShortDto user = userClient.getUser(userId);
+
+        if (user == null) {
+            throw new NotFoundException("User with id=" + userId + " was not found");
+        }
+
+        return user;
     }
 
     private Category getCategory(Long categoryId) {

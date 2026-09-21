@@ -23,7 +23,7 @@ public final class EventSpecification {
             List<Predicate> predicates = new ArrayList<>();
 
             if (users != null && !users.isEmpty()) {
-                predicates.add(root.get("initiator").get("id").in(users));
+                predicates.add(root.get("initiatorId").in(users));
             }
             if (states != null && !states.isEmpty()) {
                 predicates.add(root.get("state").in(states));
