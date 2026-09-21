@@ -207,3 +207,110 @@ mvn clean verify -P coverage
 Критические бизнес-данные не подменяются фиктивными значениями. Например, недоступность `request-service` не маскируется значением `confirmedRequests = 0`, поскольку это может исказить проверку доступности события. Такой вызов завершается ошибкой за ограниченное время.
 
 Автоматические retry для изменяющих состояние запросов не используются, чтобы не создавать риск повторного выполнения `POST`/`PATCH` операций.
+
+## Архитектура микросервисов
+
+После декомпозиции приложение разделено на независимые бизнес-сервисы.
+
+### Сервисы
+
+- `user-service` — пользователи.
+- `event-service` — события, категории и подборки.
+- `request-service` — заявки на участие в событиях.
+- `comment-service` — комментарии и их модерация.
+- `stats-server` — статистика просмотров.
+- `gateway-server` — единая точка входа во внешнее API.
+- `discovery-server` — Service Discovery на базе Eureka.
+- `config-server` — централизованная конфигурация приложений.
+
+### Взаимодействие
+
+Внешние запросы проходят через `gateway-server`.
+
+Между бизнес-сервисами используется OpenFeign и обнаружение сервисов через Eureka.
+
+```text
+Client
+  |
+  v
+Gateway
+  |
+  +------> user-service
+  |
+  +------> event-service
+  |           |
+  |           +------> user-service
+  |           +------> request-service
+  |           +------> comment-service
+  |
+  +------> request-service
+  |           |
+  |           +------> user-service
+  |           +------> event-service
+  |
+  +------> comment-service
+              |
+              +------> user-service
+              +------> event-service
+```
+
+Сервисы не зависят друг от друга как Maven-модули. Общие DTO и Feign-интерфейсы находятся в модуле `common`.
+
+### Базы данных
+
+Каждый бизнес-сервис владеет собственной базой данных:
+
+| Сервис | База |
+| --- | --- |
+| `user-service` | `users` |
+| `request-service` | `requests` |
+| `event-service` | `events` |
+| `comment-service` | `comments` |
+| `stats-server` | `stats` |
+
+Между таблицами разных сервисов нет внешних ключей. Связи между сущностями разных сервисов представлены идентификаторами и разрешаются через HTTP-вызовы.
+
+### Инфраструктурные порты
+
+| Компонент | Порт |
+| --- | ---: |
+| API Gateway | `8080` |
+| Eureka | `8761` |
+| Config Server | `8888` |
+| Stats PostgreSQL | `6541` |
+| User PostgreSQL | `6543` |
+| Request PostgreSQL | `6544` |
+| Event PostgreSQL | `6545` |
+| Comment PostgreSQL | `6546` |
+
+### Запуск
+
+Запуск всей системы:
+
+```bash
+docker compose up -d --build
+```
+
+После запуска:
+
+- API: `http://localhost:8080`
+- Eureka: `http://localhost:8761`
+- Config Server: `http://localhost:8888`
+
+Проверка контейнеров:
+
+```bash
+docker compose ps
+```
+
+Остановка:
+
+```bash
+docker compose down
+```
+
+Удаление контейнеров вместе с данными PostgreSQL:
+
+```bash
+docker compose down -v
+```
