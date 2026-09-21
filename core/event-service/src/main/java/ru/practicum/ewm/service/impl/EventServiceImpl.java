@@ -13,6 +13,8 @@ import ru.practicum.ewm.exception.ConflictException;
 import ru.practicum.ewm.exception.NotFoundException;
 import ru.practicum.ewm.mapper.EventMapper;
 import ru.practicum.ewm.model.*;
+import ru.practicum.ewm.port.CommentCountPort;
+import ru.practicum.ewm.port.RequestCountPort;
 import ru.practicum.ewm.repository.*;
 import ru.practicum.ewm.service.EventService;
 import ru.practicum.ewm.service.StatsHelperService;
@@ -37,8 +39,8 @@ public class EventServiceImpl implements EventService {
     private final EventRepository eventRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
-    private final RequestRepository requestRepository;
-    private final CommentRepository commentRepository;
+    private final RequestCountPort requestCountPort;
+    private final CommentCountPort commentCountPort;
     private final EventMapper eventMapper;
     private final StatsHelperService statsHelperService;
 
@@ -49,7 +51,7 @@ public class EventServiceImpl implements EventService {
 
         if (start != null && end != null && start.isAfter(end)) {
             throw new IllegalArgumentException(
-                    "Field: rangeEnd. Error: rangeEnd должен быть позже rangeStart."
+                    "Field: rangeEnd. Error: rangeEnd РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР·Р¶Рµ rangeStart."
             );
         }
 
@@ -114,7 +116,7 @@ public class EventServiceImpl implements EventService {
         statsHelperService.hit(request);
 
         long views = statsHelperService.getViews(event);
-        long commentsCount = commentRepository.countByEventIdAndStatus(eventId, CommentStatus.PUBLISHED);
+        long commentsCount = commentCountPort.countPublishedComments(eventId);
 
         return toFullDto(event, views, commentsCount);
     }
@@ -147,7 +149,7 @@ public class EventServiceImpl implements EventService {
         if (newEventDto.getEventDate()
                 .isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: должно содержать дату, которая еще не наступила."
+                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
             );
         }
 
@@ -172,7 +174,7 @@ public class EventServiceImpl implements EventService {
                         new NotFoundException("Event with id=" + eventId + " was not found"));
 
         long views = statsHelperService.getViews(event);
-        long commentsCount = commentRepository.countByEventIdAndStatus(eventId, CommentStatus.PUBLISHED);
+        long commentsCount = commentCountPort.countPublishedComments(eventId);
 
         return toFullDto(event, views, commentsCount);
     }
@@ -198,7 +200,7 @@ public class EventServiceImpl implements EventService {
         if (updateRequest.getEventDate() != null
                 && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: должно содержать дату, которая еще не наступила."
+                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
             );
         }
 
@@ -244,7 +246,7 @@ public class EventServiceImpl implements EventService {
         event = eventRepository.save(event);
 
         long views = statsHelperService.getViews(event);
-        long commentsCount = commentRepository.countByEventIdAndStatus(eventId, CommentStatus.PUBLISHED);
+        long commentsCount = commentCountPort.countPublishedComments(eventId);
 
         return toFullDto(event, views, commentsCount);
     }
@@ -328,7 +330,7 @@ public class EventServiceImpl implements EventService {
         if (updateRequest.getEventDate() != null
                 && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
             throw new IllegalArgumentException(
-                    "Field: eventDate. Error: должно содержать дату, которая еще не наступила."
+                    "Field: eventDate. Error: РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РґР°С‚Сѓ, РєРѕС‚РѕСЂР°СЏ РµС‰Рµ РЅРµ РЅР°СЃС‚СѓРїРёР»Р°."
             );
         }
 
@@ -353,7 +355,7 @@ public class EventServiceImpl implements EventService {
         event = eventRepository.save(event);
 
         long views = statsHelperService.getViews(event);
-        long commentsCount = commentRepository.countByEventIdAndStatus(eventId, CommentStatus.PUBLISHED);
+        long commentsCount = commentCountPort.countPublishedComments(eventId);
 
         return toFullDto(event, views, commentsCount);
     }
@@ -362,10 +364,7 @@ public class EventServiceImpl implements EventService {
         EventShortDto dto = eventMapper.toShortDto(event);
 
         dto.setConfirmedRequests(
-                requestRepository.countByEventIdAndStatus(
-                        event.getId(),
-                        RequestStatus.CONFIRMED
-                )
+                requestCountPort.countConfirmedRequests(event.getId())
         );
 
         dto.setViews(views);
@@ -378,10 +377,7 @@ public class EventServiceImpl implements EventService {
         EventFullDto dto = eventMapper.toFullDto(event);
 
         dto.setConfirmedRequests(
-                requestRepository.countByEventIdAndStatus(
-                        event.getId(),
-                        RequestStatus.CONFIRMED
-                )
+                requestCountPort.countConfirmedRequests(event.getId())
         );
 
         dto.setViews(views);
@@ -399,15 +395,7 @@ public class EventServiceImpl implements EventService {
                 .map(Event::getId)
                 .toList();
 
-        return requestRepository.countByEventIdsAndStatus(
-                        eventIds,
-                        RequestStatus.CONFIRMED
-                )
-                .stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        row -> (Long) row[0],
-                        row -> (Long) row[1]
-                ));
+        return requestCountPort.countConfirmedRequests(eventIds);
     }
 
     private Map<Long, Long> getCommentsCount(List<Event> events) {
@@ -419,7 +407,7 @@ public class EventServiceImpl implements EventService {
                 .map(Event::getId)
                 .toList();
 
-        return commentRepository.countByEventIdsAndStatus(eventIds, CommentStatus.PUBLISHED);
+        return commentCountPort.countPublishedComments(eventIds);
     }
 
     private boolean isAvailable(Event event, Long confirmedRequests) {
