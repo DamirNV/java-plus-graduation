@@ -19,6 +19,7 @@ services:
       SERVER_PORT: 8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
 
+
   stats-db:
     image: postgres:17
     ports:
@@ -35,21 +36,6 @@ services:
       timeout: 5s
       retries: 10
 
-  ewm-db:
-    image: postgres:17
-    ports:
-      - "6542:5432"
-    environment:
-      POSTGRES_DB: ewm
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - ewm-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d ewm" ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   user-db:
     image: postgres:17
@@ -67,6 +53,7 @@ services:
       timeout: 5s
       retries: 10
 
+
   request-db:
     image: postgres:17
     ports:
@@ -83,6 +70,7 @@ services:
       timeout: 5s
       retries: 10
 
+
   event-db:
     image: postgres:17
     ports:
@@ -98,6 +86,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+
+  comment-db:
+    image: postgres:17
+    ports:
+      - "6546:5432"
+    environment:
+      POSTGRES_DB: comments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - comment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d comments" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 
   stats-server:
     build:
@@ -119,6 +125,7 @@ services:
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
+
   user-service:
     build:
       context: .
@@ -137,6 +144,7 @@ services:
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
+
   request-service:
     build:
       context: .
@@ -154,6 +162,7 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+
 
   event-service:
     build:
@@ -179,12 +188,13 @@ services:
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
-  ewm-service:
+
+  comment-service:
     build:
       context: .
-      dockerfile: core/ewm-service/Dockerfile
+      dockerfile: core/comment-service/Dockerfile
     depends_on:
-      ewm-db:
+      comment-db:
         condition: service_healthy
       config-server:
         condition: service_started
@@ -196,12 +206,13 @@ services:
         condition: service_started
     restart: on-failure
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://ewm-db:5432/ewm
+      SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/comments
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+
 
   gateway-server:
     build:
@@ -214,16 +225,17 @@ services:
       - user-service
       - request-service
       - event-service
-      - ewm-service
+      - comment-service
     restart: on-failure
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
+
 volumes:
   stats-db-data:
-  ewm-db-data:
   user-db-data:
   request-db-data:
   event-db-data:
+  comment-db-data:
