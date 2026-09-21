@@ -67,6 +67,22 @@ services:
       timeout: 5s
       retries: 10
 
+  request-db:
+    image: postgres:17
+    ports:
+      - "6544:5432"
+    environment:
+      POSTGRES_DB: requests
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - request-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d requests" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   stats-server:
     build:
       context: .
@@ -105,6 +121,24 @@ services:
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
       SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
 
+  request-service:
+    build:
+      context: .
+      dockerfile: core/request-service/Dockerfile
+    depends_on:
+      request-db:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+    restart: on-failure
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://request-db:5432/requests
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+
   ewm-service:
     build:
       context: .
@@ -117,6 +151,8 @@ services:
       stats-server:
         condition: service_started
       user-service:
+        condition: service_started
+      request-service:
         condition: service_started
     restart: on-failure
     environment:
@@ -136,6 +172,7 @@ services:
     depends_on:
       - config-server
       - user-service
+      - request-service
       - ewm-service
     restart: on-failure
     environment:
@@ -147,3 +184,4 @@ volumes:
   stats-db-data:
   ewm-db-data:
   user-db-data:
+  request-db-data:
