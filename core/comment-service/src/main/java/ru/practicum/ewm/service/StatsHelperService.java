@@ -17,7 +17,7 @@ public class StatsHelperService {
 
     private final StatsClient statsClient;
 
-    @Value("${spring.application.name:ewm-service}")
+    @Value("${spring.application.name:comment-service}")
     private String appName;
 
     public void hit(HttpServletRequest request) {

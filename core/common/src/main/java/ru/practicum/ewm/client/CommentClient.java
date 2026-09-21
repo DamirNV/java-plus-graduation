@@ -7,7 +7,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = "ewm-service", path = "/internal/comments")
+@FeignClient(
+        name = "comment-service",
+        path = "/internal/comments"
+)
 public interface CommentClient {
 
     @GetMapping("/published/count")
