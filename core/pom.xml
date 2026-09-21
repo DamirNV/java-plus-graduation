@@ -17,8 +17,7 @@
 
     <modules>
         <module>common</module>
-        <module>ewm-service</module>
-        <module>event-service</module>
+<module>event-service</module>
         <module>request-service</module>
         <module>user-service</module>
         <module>comment-service</module>
