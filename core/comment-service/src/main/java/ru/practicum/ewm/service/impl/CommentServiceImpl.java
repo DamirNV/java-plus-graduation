@@ -7,8 +7,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import ru.practicum.ewm.client.EventClient;
 import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dto.CommentDto;
+import ru.practicum.ewm.dto.EventInternalDto;
 import ru.practicum.ewm.dto.NewCommentDto;
 import ru.practicum.ewm.dto.UpdateCommentDto;
 import ru.practicum.ewm.dto.UserShortDto;
@@ -17,10 +19,7 @@ import ru.practicum.ewm.exception.NotFoundException;
 import ru.practicum.ewm.mapper.CommentMapper;
 import ru.practicum.ewm.model.Comment;
 import ru.practicum.ewm.model.CommentStatus;
-import ru.practicum.ewm.model.Event;
-import ru.practicum.ewm.model.EventState;
 import ru.practicum.ewm.repository.CommentRepository;
-import ru.practicum.ewm.repository.EventRepository;
 import ru.practicum.ewm.service.CommentService;
 import ru.practicum.ewm.service.StatsHelperService;
 
@@ -34,7 +33,7 @@ public class CommentServiceImpl implements CommentService {
 
     private final CommentRepository commentRepository;
     private final UserClient userClient;
-    private final EventRepository eventRepository;
+    private final EventClient eventClient;
     private final CommentMapper commentMapper;
     private final StatsHelperService statsHelperService;
 
@@ -45,9 +44,9 @@ public class CommentServiceImpl implements CommentService {
             NewCommentDto newCommentDto
     ) {
         UserShortDto user = getUser(userId);
-        Event event = getEvent(eventId);
+        EventInternalDto event = getEvent(eventId);
 
-        if (event.getState() != EventState.PUBLISHED) {
+        if (!"PUBLISHED".equals(event.getState())) {
             throw new ConflictException(
                     "Only published events can be commented"
             );
@@ -55,7 +54,7 @@ public class CommentServiceImpl implements CommentService {
 
         Comment comment = commentMapper.toEntity(newCommentDto);
         comment.setAuthorId(user.getId());
-        comment.setEvent(event);
+        comment.setEventId(eventId);
         comment.setStatus(CommentStatus.PENDING);
         comment.setCreated(LocalDateTime.now());
 
@@ -337,15 +336,19 @@ public class CommentServiceImpl implements CommentService {
         return user;
     }
 
-    private Event getEvent(Long eventId) {
-        return eventRepository.findById(eventId)
-                .orElseThrow(() ->
-                        new NotFoundException(
-                                "Event with id=" +
-                                        eventId +
-                                        " was not found"
-                        )
-                );
+    private EventInternalDto getEvent(Long eventId) {
+        EventInternalDto event =
+                eventClient.getEvent(eventId);
+
+        if (event == null) {
+            throw new NotFoundException(
+                    "Event with id=" +
+                            eventId +
+                            " was not found"
+            );
+        }
+
+        return event;
     }
 
     private void checkUserExists(Long userId) {
@@ -353,12 +356,6 @@ public class CommentServiceImpl implements CommentService {
     }
 
     private void checkEventExists(Long eventId) {
-        if (!eventRepository.existsById(eventId)) {
-            throw new NotFoundException(
-                    "Event with id=" +
-                            eventId +
-                            " was not found"
-            );
-        }
+        getEvent(eventId);
     }
 }

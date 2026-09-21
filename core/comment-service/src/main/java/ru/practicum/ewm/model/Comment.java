@@ -32,9 +32,8 @@ public class Comment {
     @Enumerated(EnumType.STRING)
     private CommentStatus status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "event_id", nullable = false)
-    private Event event;
+    @Column(name = "event_id", nullable = false)
+    private Long eventId;
 
     @Column(name = "author_id", nullable = false)
     private Long authorId;

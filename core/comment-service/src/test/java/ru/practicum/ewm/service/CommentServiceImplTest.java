@@ -8,8 +8,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import ru.practicum.ewm.client.EventClient;
 import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dto.CommentDto;
+import ru.practicum.ewm.dto.EventInternalDto;
 import ru.practicum.ewm.dto.UserShortDto;
 import ru.practicum.ewm.exception.ConflictException;
 import ru.practicum.ewm.exception.NotFoundException;
@@ -17,7 +19,6 @@ import ru.practicum.ewm.mapper.CommentMapper;
 import ru.practicum.ewm.model.Comment;
 import ru.practicum.ewm.model.CommentStatus;
 import ru.practicum.ewm.repository.CommentRepository;
-import ru.practicum.ewm.repository.EventRepository;
 import ru.practicum.ewm.service.impl.CommentServiceImpl;
 
 import java.util.List;
@@ -40,7 +41,7 @@ class CommentServiceImplTest {
     private UserClient userClient;
 
     @Mock
-    private EventRepository eventRepository;
+    private EventClient eventClient;
 
     @Mock
     private CommentMapper commentMapper;
@@ -62,7 +63,7 @@ class CommentServiceImplTest {
         Comment comment = comment(10L, CommentStatus.PUBLISHED);
         CommentDto dto = dto(10L, "PUBLISHED");
 
-        when(eventRepository.existsById(2L)).thenReturn(true);
+        when(eventClient.getEvent(2L)).thenReturn(eventDto(2L, "PUBLISHED"));
         when(commentRepository.findByEventIdAndStatus(
                 eq(2L),
                 eq(CommentStatus.PUBLISHED),
@@ -83,7 +84,7 @@ class CommentServiceImplTest {
 
     @Test
     void getEventComments_whenEventNotFound_shouldThrowNotFound() {
-        when(eventRepository.existsById(99L)).thenReturn(false);
+        when(eventClient.getEvent(99L)).thenReturn(null);
 
         assertThatThrownBy(() ->
                 commentService.getEventComments(99L, 0, 10, request)
@@ -314,6 +315,16 @@ class CommentServiceImplTest {
                 .deleteById(anyLong());
     }
 
+
+    private EventInternalDto eventDto(
+            Long id,
+            String state
+    ) {
+        return EventInternalDto.builder()
+                .id(id)
+                .state(state)
+                .build();
+    }
     private Comment comment(
             Long id,
             CommentStatus status

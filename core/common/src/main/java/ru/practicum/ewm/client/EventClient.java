@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import ru.practicum.ewm.dto.EventInternalDto;
 
-@FeignClient(name = "ewm-service", path = "/internal/events")
+@FeignClient(name = "event-service", path = "/internal/events")
 public interface EventClient {
 
     @GetMapping("/{eventId}")

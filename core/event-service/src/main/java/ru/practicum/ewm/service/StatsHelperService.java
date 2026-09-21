@@ -3,6 +3,7 @@ package ru.practicum.ewm.service;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.practicum.ewm.model.Event;
 import ru.practicum.stats.client.StatsClient;
@@ -22,7 +23,8 @@ public class StatsHelperService {
     private static final LocalDateTime DEFAULT_START = LocalDateTime.of(2000, 1, 1, 0, 0, 0);
 
     private final StatsClient statsClient;
-    private final String appName;
+    @Value("${spring.application.name:event-service}")
+    private String appName;
 
     public Map<Long, Long> getViews(Collection<Event> events) {
         if (events == null || events.isEmpty()) {
