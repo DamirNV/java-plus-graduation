@@ -20,7 +20,7 @@ public class AdminEventController {
     private final EventService eventService;
 
     @GetMapping
-    public List<EventFullDto> searchEvents(AdminEventSearchParams params) {
+    public List<EventFullDto> searchEvents(@Valid AdminEventSearchParams params) {
         log.info("GET /admin/events - users={}, states={}, categories={}",
                 params.getUsers(), params.getStates(), params.getCategories());
         return eventService.searchEventsByAdmin(params);

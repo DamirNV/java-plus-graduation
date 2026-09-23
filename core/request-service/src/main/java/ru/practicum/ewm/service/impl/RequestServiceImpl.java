@@ -3,6 +3,7 @@ package ru.practicum.ewm.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.ewm.client.EventClient;
 import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dto.EventInternalDto;
@@ -172,6 +173,7 @@ public class RequestServiceImpl implements RequestService {
     }
 
     @Override
+    @Transactional
     public EventRequestStatusUpdateResult updateRequestsStatus(
             Long userId,
             Long eventId,

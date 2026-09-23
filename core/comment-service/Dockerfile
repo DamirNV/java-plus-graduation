@@ -4,7 +4,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN mvn -pl core/comment-service -am package -DskipTests
+RUN --mount=type=cache,id=ewm-maven,target=/root/.m2,sharing=locked \
+    mvn -Dmaven.wagon.http.retryHandler.count=5 -pl core/comment-service -am package -DskipTests
 
 
 FROM eclipse-temurin:21-jre

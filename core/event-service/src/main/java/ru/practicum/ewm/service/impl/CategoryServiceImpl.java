@@ -2,7 +2,7 @@ package ru.practicum.ewm.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import ru.practicum.ewm.dto.CategoryDto;
 import ru.practicum.ewm.dto.NewCategoryDto;
@@ -13,6 +13,7 @@ import ru.practicum.ewm.model.Category;
 import ru.practicum.ewm.repository.CategoryRepository;
 import ru.practicum.ewm.repository.EventRepository;
 import ru.practicum.ewm.service.CategoryService;
+import ru.practicum.ewm.util.OffsetPageRequest;
 
 import java.util.List;
 
@@ -59,8 +60,8 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     public List<CategoryDto> getCategories(int from, int size) {
-        PageRequest pageRequest = PageRequest.of(from / size, size);
-        return categoryRepository.findAll(pageRequest)
+        Pageable pageable = new OffsetPageRequest(from, size);
+        return categoryRepository.findAll(pageable)
                 .stream()
                 .map(categoryMapper::toDto)
                 .toList();

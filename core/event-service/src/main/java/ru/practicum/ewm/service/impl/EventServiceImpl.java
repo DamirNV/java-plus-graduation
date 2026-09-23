@@ -3,7 +3,6 @@ package ru.practicum.ewm.service.impl;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -20,9 +19,11 @@ import ru.practicum.ewm.repository.*;
 import ru.practicum.ewm.service.EventService;
 import ru.practicum.ewm.service.StatsHelperService;
 import ru.practicum.ewm.specification.EventSpecification;
+import ru.practicum.ewm.util.OffsetPageRequest;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +36,8 @@ public class EventServiceImpl implements EventService {
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private static final long MIN_HOURS_BEFORE_EVENT = 2L;
+    private static final long USER_MIN_HOURS_BEFORE_EVENT = 2L;
+    private static final long ADMIN_MIN_HOURS_BEFORE_EVENT = 1L;
 
     private final EventRepository eventRepository;
     private final UserClient userClient;
@@ -50,21 +52,12 @@ public class EventServiceImpl implements EventService {
         LocalDateTime start = parseDate(params.getRangeStart());
         LocalDateTime end = parseDate(params.getRangeEnd());
 
-        if (start != null && end != null && start.isAfter(end)) {
-            throw new IllegalArgumentException(
-                    "Field: rangeEnd. Error: rangeEnd Р Т‘Р С•Р В»Р В¶Р ВµР Р… Р В±РЎвЂ№РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ rangeStart."
-            );
-        }
+        validateRange(start, end);
+        validateSort(params.getSort());
 
         if (start == null && end == null) {
             start = LocalDateTime.now();
         }
-
-        Pageable pageable = PageRequest.of(
-                params.getFrom() / params.getSize(),
-                params.getSize(),
-                Sort.by(Sort.Direction.ASC, "eventDate")
-        );
 
         Specification<Event> specification = EventSpecification.publicFilter(
                 normalizeText(params.getText()),
@@ -74,33 +67,55 @@ public class EventServiceImpl implements EventService {
                 end
         );
 
+        statsHelperService.hit(params.getRequest());
+
+        if (Boolean.TRUE.equals(params.getOnlyAvailable())
+                || "VIEWS".equalsIgnoreCase(params.getSort())) {
+            return getPublicEventsWithPostFiltering(specification, params);
+        }
+
+        Pageable pageable = new OffsetPageRequest(
+                params.getFrom(),
+                params.getSize(),
+                Sort.by(Sort.Direction.ASC, "eventDate")
+        );
+
         List<Event> events = eventRepository.findAll(specification, pageable).getContent();
+        return toShortDtos(events);
+    }
+
+    private List<EventShortDto> getPublicEventsWithPostFiltering(
+            Specification<Event> specification,
+            PublicEventSearchParams params
+    ) {
+        List<Event> events = eventRepository.findAll(
+                specification,
+                Sort.by(Sort.Direction.ASC, "eventDate")
+        );
 
         Map<Long, Long> confirmedRequests = getConfirmedRequests(events);
-        Map<Long, Long> commentsCount = getCommentsCount(events);
 
         if (Boolean.TRUE.equals(params.getOnlyAvailable())) {
             events = events.stream()
-                    .filter(event -> isAvailable(event,
-                            confirmedRequests.getOrDefault(event.getId(), 0L)))
+                    .filter(event -> isAvailable(
+                            event,
+                            confirmedRequests.getOrDefault(event.getId(), 0L)
+                    ))
                     .toList();
         }
 
-        Map<Long, Long> views = statsHelperService.getViews(events);
-        Map<Long, UserShortDto> users = getUsers(events);
-        statsHelperService.hit(params.getRequest());
-
-        List<EventShortDto> result = events.stream()
-                .map(event -> toShortDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
-                .toList();
+        List<EventShortDto> result = toShortDtos(events, confirmedRequests);
 
         if ("VIEWS".equalsIgnoreCase(params.getSort())) {
-            return result.stream()
+            result = result.stream()
                     .sorted(Comparator.comparing(EventShortDto::getViews).reversed())
                     .toList();
         }
 
-        return result;
+        return result.stream()
+                .skip(params.getFrom())
+                .limit(params.getSize())
+                .toList();
     }
 
     @Override
@@ -125,20 +140,13 @@ public class EventServiceImpl implements EventService {
     public List<EventShortDto> getUserEvents(Long userId, int from, int size) {
         checkUserExists(userId);
 
-        Pageable pageable = PageRequest.of(from / size, size);
+        Pageable pageable = new OffsetPageRequest(from, size);
 
         List<Event> events = eventRepository
                 .findByInitiatorId(userId, pageable)
                 .getContent();
 
-        Map<Long, Long> views = statsHelperService.getViews(events);
-        Map<Long, UserShortDto> users = getUsers(events);
-        Map<Long, Long> commentsCount = getCommentsCount(events);
-
-        return events.stream()
-                .map(event ->
-                        toShortDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
-                .toList();
+        return toShortDtos(events);
     }
 
     @Override
@@ -147,9 +155,9 @@ public class EventServiceImpl implements EventService {
         Category category = getCategory(newEventDto.getCategory());
 
         if (newEventDto.getEventDate()
-                .isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
-            throw new IllegalArgumentException(
-                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
+                .isBefore(LocalDateTime.now().plusHours(USER_MIN_HOURS_BEFORE_EVENT))) {
+            throw new ConflictException(
+                    "Event date must be at least two hours from the current moment"
             );
         }
 
@@ -162,7 +170,7 @@ public class EventServiceImpl implements EventService {
 
         event = eventRepository.save(event);
 
-        return toFullDto(event, 0L, 0L);
+        return toFullDto(event, 0L, 0L, 0L, initiator);
     }
 
     @Override
@@ -198,9 +206,10 @@ public class EventServiceImpl implements EventService {
         }
 
         if (updateRequest.getEventDate() != null
-                && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
-            throw new IllegalArgumentException(
-                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
+                && updateRequest.getEventDate()
+                .isBefore(LocalDateTime.now().plusHours(USER_MIN_HOURS_BEFORE_EVENT))) {
+            throw new ConflictException(
+                    "Event date must be at least two hours from the current moment"
             );
         }
 
@@ -261,12 +270,11 @@ public class EventServiceImpl implements EventService {
                     .toList();
         }
 
-        int from = params.getFrom() < 0 ? 0 : params.getFrom();
-        int size = params.getSize() <= 0 ? 10 : params.getSize();
+        validateRange(params.getRangeStart(), params.getRangeEnd());
 
-        Pageable pageable = PageRequest.of(
-                from / size,
-                size,
+        Pageable pageable = new OffsetPageRequest(
+                params.getFrom(),
+                params.getSize(),
                 Sort.by(Sort.Direction.ASC, "eventDate")
         );
 
@@ -283,16 +291,25 @@ public class EventServiceImpl implements EventService {
         Map<Long, Long> views = statsHelperService.getViews(events);
         Map<Long, UserShortDto> users = getUsers(events);
         Map<Long, Long> commentsCount = getCommentsCount(events);
+        Map<Long, Long> confirmedRequests = getConfirmedRequests(events);
 
         return events.stream()
-                .map(event -> toFullDto(event, views.getOrDefault(event.getId(), 0L), commentsCount.getOrDefault(event.getId(), 0L), users.get(event.getInitiatorId())))
+                .map(event -> toFullDto(
+                        event,
+                        confirmedRequests.getOrDefault(event.getId(), 0L),
+                        views.getOrDefault(event.getId(), 0L),
+                        commentsCount.getOrDefault(event.getId(), 0L),
+                        users.get(event.getInitiatorId())
+                ))
                 .toList();
     }
 
     @Override
     public EventFullDto updateEventByAdmin(Long eventId, UpdateEventAdminRequest updateRequest) {
         Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new NotFoundException("Event with id=" + eventId + " was not found"));
+                .orElseThrow(() -> new NotFoundException(
+                        "Event with id=" + eventId + " was not found"
+                ));
 
         if (updateRequest.getAnnotation() != null) {
             event.setAnnotation(updateRequest.getAnnotation());
@@ -326,10 +343,12 @@ public class EventServiceImpl implements EventService {
             event.setEventDate(updateRequest.getEventDate());
         }
 
-        if (updateRequest.getEventDate() != null
-                && updateRequest.getEventDate().isBefore(LocalDateTime.now().plusHours(MIN_HOURS_BEFORE_EVENT))) {
-            throw new IllegalArgumentException(
-                    "Field: eventDate. Error: Р Т‘Р С•Р В»Р В¶Р Р…Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р С”Р С•РЎвЂљР С•РЎР‚Р В°РЎРЏ Р ВµРЎвЂ°Р Вµ Р Р…Р Вµ Р Р…Р В°РЎРѓРЎвЂљРЎС“Р С—Р С‘Р В»Р В°."
+        boolean publishing = updateRequest.getStateAction() == AdminStateAction.PUBLISH_EVENT;
+        if ((updateRequest.getEventDate() != null || publishing)
+                && event.getEventDate()
+                .isBefore(LocalDateTime.now().plusHours(ADMIN_MIN_HOURS_BEFORE_EVENT))) {
+            throw new ConflictException(
+                    "Event date must be at least one hour from the publication moment"
             );
         }
 
@@ -337,14 +356,20 @@ public class EventServiceImpl implements EventService {
             switch (updateRequest.getStateAction()) {
                 case PUBLISH_EVENT -> {
                     if (event.getState() != EventState.PENDING) {
-                        throw new ConflictException("Cannot publish the event because it's not in the right state: " + event.getState());
+                        throw new ConflictException(
+                                "Cannot publish the event because it's not in the right state: "
+                                        + event.getState()
+                        );
                     }
                     event.setState(EventState.PUBLISHED);
                     event.setPublishedOn(LocalDateTime.now());
                 }
                 case REJECT_EVENT -> {
                     if (event.getState() == EventState.PUBLISHED) {
-                        throw new ConflictException("Cannot reject the event because it's not in the right state: " + event.getState());
+                        throw new ConflictException(
+                                "Cannot reject the event because it's not in the right state: "
+                                        + event.getState()
+                        );
                     }
                     event.setState(EventState.CANCELED);
                 }
@@ -359,20 +384,40 @@ public class EventServiceImpl implements EventService {
         return toFullDto(event, views, commentsCount);
     }
 
-    private EventShortDto toShortDto(Event event, long views, long commentsCount) {
-        return toShortDto(event, views, commentsCount, getUser(event.getInitiatorId()));
+    private List<EventShortDto> toShortDtos(List<Event> events) {
+        return toShortDtos(events, getConfirmedRequests(events));
     }
 
-    private EventShortDto toShortDto(Event event,
-                                     long views,
-                                     long commentsCount,
-                                     UserShortDto initiator) {
+    private List<EventShortDto> toShortDtos(
+            List<Event> events,
+            Map<Long, Long> confirmedRequests
+    ) {
+        Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, UserShortDto> users = getUsers(events);
+        Map<Long, Long> commentsCount = getCommentsCount(events);
+
+        return events.stream()
+                .map(event -> toShortDto(
+                        event,
+                        confirmedRequests.getOrDefault(event.getId(), 0L),
+                        views.getOrDefault(event.getId(), 0L),
+                        commentsCount.getOrDefault(event.getId(), 0L),
+                        users.get(event.getInitiatorId())
+                ))
+                .toList();
+    }
+
+    private EventShortDto toShortDto(
+            Event event,
+            long confirmedRequests,
+            long views,
+            long commentsCount,
+            UserShortDto initiator
+    ) {
         EventShortDto dto = eventMapper.toShortDto(event);
 
         dto.setInitiator(initiator);
-        dto.setConfirmedRequests(
-                requestCountPort.countConfirmedRequests(event.getId())
-        );
+        dto.setConfirmedRequests(confirmedRequests);
         dto.setViews(views);
         dto.setComments(commentsCount);
 
@@ -380,19 +425,26 @@ public class EventServiceImpl implements EventService {
     }
 
     private EventFullDto toFullDto(Event event, long views, long commentsCount) {
-        return toFullDto(event, views, commentsCount, getUser(event.getInitiatorId()));
+        return toFullDto(
+                event,
+                requestCountPort.countConfirmedRequests(event.getId()),
+                views,
+                commentsCount,
+                getUser(event.getInitiatorId())
+        );
     }
 
-    private EventFullDto toFullDto(Event event,
-                                   long views,
-                                   long commentsCount,
-                                   UserShortDto initiator) {
+    private EventFullDto toFullDto(
+            Event event,
+            long confirmedRequests,
+            long views,
+            long commentsCount,
+            UserShortDto initiator
+    ) {
         EventFullDto dto = eventMapper.toFullDto(event);
 
         dto.setInitiator(initiator);
-        dto.setConfirmedRequests(
-                requestCountPort.countConfirmedRequests(event.getId())
-        );
+        dto.setConfirmedRequests(confirmedRequests);
         dto.setViews(views);
         dto.setComments(commentsCount);
 
@@ -448,9 +500,36 @@ public class EventServiceImpl implements EventService {
     }
 
     private LocalDateTime parseDate(String value) {
-        return value == null || value.isBlank()
-                ? null
-                : LocalDateTime.parse(value, FORMATTER);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return LocalDateTime.parse(value, FORMATTER);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "Date must have format yyyy-MM-dd HH:mm:ss",
+                    e
+            );
+        }
+    }
+
+    private void validateRange(LocalDateTime start, LocalDateTime end) {
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new IllegalArgumentException(
+                    "rangeEnd must be later than or equal to rangeStart"
+            );
+        }
+    }
+
+    private void validateSort(String sort) {
+        if (sort != null
+                && !"EVENT_DATE".equalsIgnoreCase(sort)
+                && !"VIEWS".equalsIgnoreCase(sort)) {
+            throw new IllegalArgumentException(
+                    "sort must be EVENT_DATE or VIEWS"
+            );
+        }
     }
 
     private String normalizeText(String text) {

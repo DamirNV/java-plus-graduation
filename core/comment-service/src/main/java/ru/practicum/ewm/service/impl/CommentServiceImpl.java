@@ -3,7 +3,6 @@ package ru.practicum.ewm.service.impl;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -22,6 +21,7 @@ import ru.practicum.ewm.model.CommentStatus;
 import ru.practicum.ewm.repository.CommentRepository;
 import ru.practicum.ewm.service.CommentService;
 import ru.practicum.ewm.service.StatsHelperService;
+import ru.practicum.ewm.util.OffsetPageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -69,8 +69,8 @@ public class CommentServiceImpl implements CommentService {
     ) {
         checkUserExists(userId);
 
-        Pageable pageable = PageRequest.of(
-                from / size,
+        Pageable pageable = new OffsetPageRequest(
+                from,
                 size
         );
 
@@ -165,8 +165,8 @@ public class CommentServiceImpl implements CommentService {
     ) {
         checkEventExists(eventId);
 
-        Pageable pageable = PageRequest.of(
-                from / size,
+        Pageable pageable = new OffsetPageRequest(
+                from,
                 size,
                 Sort.by(
                         Sort.Direction.ASC,
@@ -231,8 +231,8 @@ public class CommentServiceImpl implements CommentService {
         CommentStatus commentStatus =
                 CommentStatus.from(status);
 
-        Pageable pageable = PageRequest.of(
-                from / size,
+        Pageable pageable = new OffsetPageRequest(
+                from,
                 size,
                 Sort.by(
                         Sort.Direction.DESC,

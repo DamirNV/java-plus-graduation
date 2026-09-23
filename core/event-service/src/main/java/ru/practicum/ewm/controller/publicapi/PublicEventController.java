@@ -1,6 +1,9 @@
 package ru.practicum.ewm.controller.publicapi;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -21,15 +24,15 @@ public class PublicEventController {
 
     @GetMapping
     public List<EventShortDto> getEvents(
-            @RequestParam(required = false) String text,
+            @RequestParam(required = false) @Size(min = 1, max = 7000) String text,
             @RequestParam(required = false) List<Long> categories,
             @RequestParam(required = false) Boolean paid,
             @RequestParam(required = false) String rangeStart,
             @RequestParam(required = false) String rangeEnd,
             @RequestParam(defaultValue = "false") Boolean onlyAvailable,
             @RequestParam(required = false) String sort,
-            @RequestParam(defaultValue = "0") int from,
-            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "0") @PositiveOrZero int from,
+            @RequestParam(defaultValue = "10") @Positive int size,
             HttpServletRequest request
     ) {
         PublicEventSearchParams params = PublicEventSearchParams.builder()

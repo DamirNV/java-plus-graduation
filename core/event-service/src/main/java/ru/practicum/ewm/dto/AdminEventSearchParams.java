@@ -1,5 +1,7 @@
 package ru.practicum.ewm.dto;
 
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,8 +27,10 @@ public class AdminEventSearchParams {
     private LocalDateTime rangeEnd;
 
     @Builder.Default
+    @PositiveOrZero
     private int from = 0;
 
     @Builder.Default
+    @Positive
     private int size = 10;
 }
