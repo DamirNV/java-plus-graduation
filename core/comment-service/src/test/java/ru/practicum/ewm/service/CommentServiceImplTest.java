@@ -325,6 +325,7 @@ class CommentServiceImplTest {
                 .state(state)
                 .build();
     }
+
     private Comment comment(
             Long id,
             CommentStatus status

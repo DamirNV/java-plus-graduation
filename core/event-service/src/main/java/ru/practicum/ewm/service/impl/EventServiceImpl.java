@@ -415,6 +415,7 @@ public class EventServiceImpl implements EventService {
                         user -> user
                 ));
     }
+
     private Map<Long, Long> getConfirmedRequests(List<Event> events) {
         if (events == null || events.isEmpty()) {
             return Map.of();
