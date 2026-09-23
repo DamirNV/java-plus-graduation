@@ -17,6 +17,7 @@ Backend-приложение для публикации событий, пои�
 - Spring Cloud Gateway
 - OpenFeign
 - Spring Cloud LoadBalancer
+- Resilience4j
 - Maven
 - Docker
 - Docker Compose
@@ -313,7 +314,7 @@ spring.cloud.openfeign.client.config.default.readTimeout=2500
 
 Для некритичных агрегированных данных применяется graceful degradation.
 
-Например, если `comment-service` временно недоступен, `event-service` продолжает возвращать данные события:
+Если `comment-service` временно недоступен, `event-service` продолжает возвращать данные события со значением:
 
 ```json
 {
@@ -323,19 +324,24 @@ spring.cloud.openfeign.client.config.default.readTimeout=2500
 
 Недоступность сервиса комментариев не делает получение события невозможным.
 
-Критические бизнес-данные фиктивными значениями не подменяются.
+Для получения количества подтверждённых заявок используется Resilience4j Retry.
 
-Например, при недоступности `request-service` значение:
+При временной недоступности `request-service` выполняется повторная попытка межсервисного вызова. Если после повторных попыток сервис остаётся недоступен, применяется fallback:
 
 ```text
-confirmedRequests
+confirmedRequests = 0
 ```
 
-не заменяется на `0`, поскольку это могло бы привести к неправильной интерпретации состояния события.
+При этом `event-service` продолжает обрабатывать запрос и возвращает HTTP `200`, вместо ошибки `5xx`.
 
-Такой межсервисный вызов завершается ошибкой за ограниченное время.
+Retry и fallback используются для операций чтения агрегированных данных. Автоматические retry для изменяющих состояние запросов `POST` и `PATCH` не используются, чтобы исключить риск повторного выполнения операции.
 
-Автоматические retry для изменяющих состояние запросов не используются, чтобы исключить риск повторного выполнения операций `POST` и `PATCH`.
+Параметры Retry централизованно задаются через Config Server:
+
+```properties
+resilience4j.retry.instances.requestService.maxAttempts=2
+resilience4j.retry.instances.requestService.waitDuration=100ms
+```
 
 ## Примеры API
 
@@ -569,7 +575,7 @@ docker compose up -d
 - отсутствие таблиц других сервисов в базе `event-service`;
 - отсутствие старого монолитного `ewm-service`.
 
-Пример итогового состояния события:
+Пример итогового состояния события при доступных сервисах:
 
 ```text
 state             = PUBLISHED
@@ -585,25 +591,23 @@ comments          = 1
 
 ```text
 event-service -> продолжает отвечать
+HTTP          -> 200
 comments      -> 0
 ```
 
-После запуска `comment-service` значение автоматически восстанавливается.
+При остановленном `stats-server` получение события также продолжает работать без ошибки `5xx`.
 
-При остановленном `request-service` получение события завершается ошибкой без подстановки некорректного значения `confirmedRequests = 0`.
-
-В тестовой конфигурации ошибка при недоступном `request-service` возвращалась примерно за:
+При остановленном `request-service` используется Resilience4j Retry и graceful degradation:
 
 ```text
-1.66 sec
+event-service     -> продолжает отвечать
+HTTP              -> 200
+confirmedRequests -> 0
 ```
 
-После восстановления сервиса:
+После восстановления зависимых сервисов `event-service` снова получает актуальные данные через межсервисные вызовы.
 
-```text
-confirmedRequests = 1
-comments          = 1
-```
+Таким образом, временная недоступность сервисов, данные которых не являются обязательными для формирования ответа, не приводит к ошибке `5xx` публичного API.
 
 ## Что демонстрирует проект
 
@@ -617,6 +621,7 @@ comments          = 1
 - маршрутизацию API через Spring Cloud Gateway;
 - межсервисное взаимодействие через OpenFeign;
 - балансировку запросов через Spring Cloud LoadBalancer;
+- отказоустойчивость операций чтения через Resilience4j Retry и fallback;
 - подход Database per Service;
 - работу с PostgreSQL и Hibernate;
 - проектирование REST API;
@@ -628,3 +633,10 @@ comments          = 1
 - ограничение времени межсервисных вызовов;
 - Docker-контейнеризацию всей системы;
 - тестирование и статический анализ кода.
+
+## Спецификация внешнего API
+
+Внешние запросы к приложению выполняются через API Gateway на порту `8080`.
+
+- Основной API: https://github.com/yandex-praktikum/java-explore-with-me/blob/main/ewm-main-service-spec.json
+- API сервиса статистики: https://github.com/yandex-praktikum/java-explore-with-me/blob/main/ewm-stats-service-spec.json
