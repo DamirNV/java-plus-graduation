@@ -130,6 +130,18 @@ services:
     ports:
       - "9090:9090"
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://localhost:9090/actuator/health
+          | grep -q '"status":"UP"'
+          && curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       SERVER_PORT: 9090
       POSTGRES_HOST: stats-db
@@ -152,6 +164,16 @@ services:
       config-server:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/USER-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/users
       SPRING_DATASOURCE_USERNAME: postgres
@@ -171,6 +193,16 @@ services:
       config-server:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/REQUEST-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://request-db:5432/requests
       SPRING_DATASOURCE_USERNAME: postgres
@@ -190,12 +222,22 @@ services:
       config-server:
         condition: service_healthy
       stats-server:
-        condition: service_started
+        condition: service_healthy
       user-service:
-        condition: service_started
+        condition: service_healthy
       request-service:
-        condition: service_started
+        condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/EVENT-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/events
       SPRING_DATASOURCE_USERNAME: postgres
@@ -214,15 +256,23 @@ services:
         condition: service_healthy
       config-server:
         condition: service_healthy
-      gateway-server:
-        condition: service_healthy
       stats-server:
-        condition: service_started
+        condition: service_healthy
       user-service:
-        condition: service_started
+        condition: service_healthy
       event-service:
-        condition: service_started
+        condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/COMMENT-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/comments
       SPRING_DATASOURCE_USERNAME: postgres
@@ -243,9 +293,19 @@ services:
         condition: service_healthy
       config-server:
         condition: service_healthy
+      stats-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      request-service:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+      comment-service:
+        condition: service_healthy
     restart: on-failure
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sS http://localhost:8080/ >/dev/null" ]
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health >/dev/null" ]
       interval: 2s
       timeout: 2s
       retries: 45
