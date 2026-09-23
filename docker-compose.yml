@@ -214,6 +214,8 @@ services:
         condition: service_healthy
       config-server:
         condition: service_healthy
+      gateway-server:
+        condition: service_healthy
       stats-server:
         condition: service_started
       user-service:
@@ -242,6 +244,12 @@ services:
       config-server:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -sS http://localhost:8080/ >/dev/null" ]
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
