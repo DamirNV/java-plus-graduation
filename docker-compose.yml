@@ -114,8 +114,11 @@ services:
         condition: service_healthy
       config-server:
         condition: service_started
+    ports:
+      - "9090:9090"
     restart: on-failure
     environment:
+      SERVER_PORT: 9090
       POSTGRES_HOST: stats-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: stats
