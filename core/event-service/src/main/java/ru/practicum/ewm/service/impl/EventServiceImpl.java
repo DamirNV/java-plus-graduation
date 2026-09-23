@@ -156,7 +156,7 @@ public class EventServiceImpl implements EventService {
 
         if (newEventDto.getEventDate()
                 .isBefore(LocalDateTime.now().plusHours(USER_MIN_HOURS_BEFORE_EVENT))) {
-            throw new ConflictException(
+            throw new IllegalArgumentException(
                     "Event date must be at least two hours from the current moment"
             );
         }
@@ -208,7 +208,7 @@ public class EventServiceImpl implements EventService {
         if (updateRequest.getEventDate() != null
                 && updateRequest.getEventDate()
                 .isBefore(LocalDateTime.now().plusHours(USER_MIN_HOURS_BEFORE_EVENT))) {
-            throw new ConflictException(
+            throw new IllegalArgumentException(
                     "Event date must be at least two hours from the current moment"
             );
         }
@@ -344,7 +344,15 @@ public class EventServiceImpl implements EventService {
         }
 
         boolean publishing = updateRequest.getStateAction() == AdminStateAction.PUBLISH_EVENT;
-        if ((updateRequest.getEventDate() != null || publishing)
+        if (updateRequest.getEventDate() != null
+                && event.getEventDate()
+                .isBefore(LocalDateTime.now().plusHours(ADMIN_MIN_HOURS_BEFORE_EVENT))) {
+            throw new IllegalArgumentException(
+                    "Event date must be at least one hour from the publication moment"
+            );
+        }
+
+        if (publishing
                 && event.getEventDate()
                 .isBefore(LocalDateTime.now().plusHours(ADMIN_MIN_HOURS_BEFORE_EVENT))) {
             throw new ConflictException(
