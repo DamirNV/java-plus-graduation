@@ -18,6 +18,12 @@ services:
     environment:
       SERVER_PORT: 8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8888/gateway-server/default >/dev/null" ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
 
 
   stats-db:
@@ -224,11 +230,10 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - config-server
-      - user-service
-      - request-service
-      - event-service
-      - comment-service
+      discovery-server:
+        condition: service_started
+      config-server:
+        condition: service_healthy
     restart: on-failure
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
