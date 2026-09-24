@@ -6,6 +6,12 @@ services:
       dockerfile: infra/discovery-server/Dockerfile
     ports:
       - "8761:8761"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8761/eureka/apps >/dev/null" ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
 
   config-server:
     build:
@@ -14,10 +20,18 @@ services:
     ports:
       - "8888:8888"
     depends_on:
-      - discovery-server
+      discovery-server:
+        condition: service_healthy
     environment:
       SERVER_PORT: 8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8888/gateway-server/default >/dev/null" ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
 
   stats-db:
     image: postgres:17
@@ -35,21 +49,74 @@ services:
       timeout: 5s
       retries: 10
 
-  ewm-db:
+
+  user-db:
     image: postgres:17
     ports:
-      - "6542:5432"
+      - "6543:5432"
     environment:
-      POSTGRES_DB: ewm
+      POSTGRES_DB: users
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - ewm-db-data:/var/lib/postgresql/data
+      - user-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d ewm" ]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d users" ]
       interval: 5s
       timeout: 5s
       retries: 10
+
+
+  request-db:
+    image: postgres:17
+    ports:
+      - "6544:5432"
+    environment:
+      POSTGRES_DB: requests
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - request-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d requests" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  event-db:
+    image: postgres:17
+    ports:
+      - "6545:5432"
+    environment:
+      POSTGRES_DB: events
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - event-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d events" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  comment-db:
+    image: postgres:17
+    ports:
+      - "6546:5432"
+    environment:
+      POSTGRES_DB: comments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - comment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d comments" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 
   stats-server:
     build:
@@ -59,41 +126,161 @@ services:
       stats-db:
         condition: service_healthy
       config-server:
-        condition: service_started
+        condition: service_healthy
+    ports:
+      - "9090:9090"
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://localhost:9090/actuator/health
+          | grep -q '"status":"UP"'
+          && curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
+      SERVER_PORT: 9090
       POSTGRES_HOST: stats-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: stats
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
 
-  ewm-service:
+
+  user-service:
     build:
       context: .
-      dockerfile: core/ewm-service/Dockerfile
+      dockerfile: core/user-service/Dockerfile
     depends_on:
-      ewm-db:
+      user-db:
         condition: service_healthy
       config-server:
-        condition: service_started
-      stats-server:
-        condition: service_started
+        condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/USER-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://ewm-db:5432/ewm
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/users
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
+
+  request-service:
+    build:
+      context: .
+      dockerfile: core/request-service/Dockerfile
+    depends_on:
+      request-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/REQUEST-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://request-db:5432/requests
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
+
+  event-service:
+    build:
+      context: .
+      dockerfile: core/event-service/Dockerfile
+    depends_on:
+      event-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      stats-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      request-service:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/EVENT-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/events
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
+
+  comment-service:
+    build:
+      context: .
+      dockerfile: core/comment-service/Dockerfile
+    depends_on:
+      comment-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      stats-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/COMMENT-SERVICE
+          | grep -q '<status>UP</status>'
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/comments
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
   gateway-server:
     build:
@@ -102,15 +289,36 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - config-server
-      - ewm-service
+      discovery-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      stats-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      request-service:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+      comment-service:
+        condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health >/dev/null" ]
+      interval: 2s
+      timeout: 2s
+      retries: 45
+      start_period: 5s
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-
       SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 volumes:
   stats-db-data:
-  ewm-db-data:
+  user-db-data:
+  request-db-data:
+  event-db-data:
+  comment-db-data:

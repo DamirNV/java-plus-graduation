@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -16,8 +16,11 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>ewm-service</module>
+        <module>common</module>
+<module>event-service</module>
+        <module>request-service</module>
+        <module>user-service</module>
+        <module>comment-service</module>
     </modules>
 
 </project>
-

@@ -1,28 +1,10 @@
-```markdown
 # Explore With Me
 
-Backend-сервис для публикации событий, подбора мероприятий и управления заявками на участие.
+Backend-приложение для публикации событий, поиска мероприятий, управления заявками на участие и комментариями пользователей.
 
-Проект реализует REST API для основной платформы событий и отдельного сервиса статистики просмотров.
+Проект реализован в микросервисной архитектуре на Java, Spring Boot и Spring Cloud.
 
----
-
-## 👥 Команда проекта
-
-**Групповой учебный проект.** Команда из 4 разработчиков.
-
-| Участник | Роль | Вклад |
-|----------|------|-------|
-| **Я (Damir)** | Участник А | • Административный API (категории, пользователи, подборки)<br>• Docker-инфраструктура и docker-compose<br>• Схема БД (schema.sql) и JPA-сущности<br>• Единый обработчик ошибок ErrorHandler<br>• **Фича "Комментарии к событиям"** — модель данных, репозиторий, DTO, мапперы<br>• Оптимизация: устранение проблемы N+1 запросов при выводе событий с комментариями |
-| Коллега 1 | Участник Б | Публичный API, интеграция с сервисом статистики, сортировка по просмотрам |
-| Коллега 2 | Участник В | Приватный API (события и заявки), модерация событий администратором |
-| Коллега 3 | Участник Г | Административный API для комментариев, Postman-тесты |
-
-> 📌 Мой код в этом репозитории: `AdminCategoryController`, `AdminUserController`, `AdminCompilationController`, `Comment`, `CommentStatus`, `CommentRepository`, `CommentMapper`, `ErrorHandler`, `schema.sql`, `docker-compose.yml`, а также оптимизация `countByEventIdsAndStatus` для массовой загрузки комментариев.
-
----
-
-## Стек
+## Стек технологий
 
 - Java 21
 - Spring Boot 3.3.0
@@ -30,109 +12,426 @@ Backend-сервис для публикации событий, подбора 
 - Spring Data JPA
 - Hibernate
 - PostgreSQL
+- Spring Cloud Config
+- Netflix Eureka
+- Spring Cloud Gateway
+- OpenFeign
+- Spring Cloud LoadBalancer
+- Resilience4j
 - Maven
-- Docker / Docker Compose
+- Docker
+- Docker Compose
 - Checkstyle
 - SpotBugs
 - JaCoCo
 
-## Описание проекта
+## Возможности проекта
 
-Explore With Me позволяет пользователям создавать события, подавать заявки на участие, модерировать публикации и
-получать подборки мероприятий.
+Explore With Me позволяет:
 
-Проект разделён на несколько логических частей:
-
-- публичный API для просмотра опубликованных событий;
-- приватный API для пользователей;
-- административный API для модерации и управления справочниками;
-- сервис статистики для сбора просмотров.
-
-## Основные возможности
-
-- Создание и редактирование событий
-- Публикация и отклонение событий администратором
-- Поиск событий по параметрам
-- Управление категориями событий
-- Создание подборок событий
-- Подача и обработка заявок на участие
-- Подтверждение или отклонение заявок инициатором события
-- **Комментарии к событиям** (с модерацией)
-- Сбор статистики просмотров
-- Получение аналитики по посещаемости
+- создавать и редактировать события;
+- публиковать и отклонять события;
+- искать события по различным параметрам;
+- управлять категориями событий;
+- создавать подборки мероприятий;
+- подавать заявки на участие;
+- подтверждать и отклонять заявки;
+- оставлять комментарии к событиям;
+- модерировать комментарии;
+- собирать статистику просмотров;
+- получать информацию о количестве подтверждённых заявок и опубликованных комментариев.
 
 ## Архитектура
 
-Проект построен как многомодульное Maven-приложение.
+Приложение разделено на независимые Spring Boot микросервисы.
 
-Основные слои приложения:
+### Бизнес-сервисы
 
-- `controller` — REST API
-- `service` — бизнес-логика
-- `repository` — доступ к данным
-- `model` — JPA-сущности
-- `dto` — входные и выходные модели API
-- `mapper` — преобразование между DTO и entity
-- `exception` — обработка ошибок
+- `user-service` — управление пользователями;
+- `event-service` — события, категории и подборки;
+- `request-service` — заявки на участие в событиях;
+- `comment-service` — комментарии и их модерация;
+- `stats-server` — сбор и получение статистики обращений.
+
+### Инфраструктурные сервисы
+
+- `config-server` — централизованное хранение конфигурации;
+- `discovery-server` — Service Discovery на базе Eureka;
+- `gateway-server` — единая точка входа во внешнее API.
+
+### Общий модуль
+
+Модуль `common` содержит общие DTO, исключения и Feign-контракты, используемые для межсервисного взаимодействия.
+
+Бизнес-сервисы не подключаются друг к другу как Maven-зависимости.
+
+## Схема взаимодействия
+
+```text
+Client
+  |
+  v
+Gateway
+  |
+  +------> user-service
+  |
+  +------> event-service
+  |           |
+  |           +------> user-service
+  |           +------> request-service
+  |           +------> comment-service
+  |
+  +------> request-service
+  |           |
+  |           +------> user-service
+  |           +------> event-service
+  |
+  +------> comment-service
+              |
+              +------> user-service
+              +------> event-service
+```
+
+Внешние запросы проходят через `gateway-server`.
+
+Для взаимодействия между бизнес-сервисами используются:
+
+- OpenFeign;
+- Eureka Service Discovery;
+- Spring Cloud LoadBalancer.
+
+## Структура Maven-проекта
+
+```text
+java-plus-graduation
+|
++-- core
+|   |
+|   +-- common
+|   +-- user-service
+|   +-- event-service
+|   +-- request-service
+|   +-- comment-service
+|
++-- stats-service
+|   |
+|   +-- stats-dto
+|   +-- stats-client
+|   +-- stats-server
+|
++-- infra
+    |
+    +-- config-server
+    +-- discovery-server
+    +-- gateway-server
+```
+
+Каждый бизнес-сервис сохраняет классическую слоистую структуру:
+
+- `controller` — REST API;
+- `service` — бизнес-логика;
+- `repository` — доступ к данным;
+- `model` — JPA-сущности;
+- `dto` — входные и выходные модели;
+- `mapper` — преобразование DTO и entity;
+- `exception` — обработка ошибок.
+
+## Хранение данных
+
+Для бизнес-сервисов используется подход Database per Service.
+
+| Сервис | База данных | Host port |
+|---|---|---:|
+| `stats-server` | `stats` | `6541` |
+| `user-service` | `users` | `6543` |
+| `request-service` | `requests` | `6544` |
+| `event-service` | `events` | `6545` |
+| `comment-service` | `comments` | `6546` |
+
+Каждый сервис управляет собственной схемой данных.
+
+Между таблицами разных сервисов нет внешних ключей.
+
+Связи с сущностями других сервисов сохраняются в виде идентификаторов. Получение необходимых данных выполняется через межсервисные HTTP-вызовы.
+
+Например:
+
+- событие хранит `initiatorId`, а данные пользователя получает из `user-service`;
+- заявка хранит `eventId` и `requesterId`;
+- комментарий хранит `eventId` и `authorId`.
 
 ## Основные сущности
 
-- `User` — пользователь системы
-- `Event` — событие
-- `Category` — категория события
-- `Compilation` — подборка событий
-- `ParticipationRequest` — заявка на участие
-- `Comment` — комментарий к событию (статусы: PENDING, PUBLISHED, REJECTED, DELETED)
-- `EndpointHit` — запись статистики обращения к endpoint
+- `User` — пользователь;
+- `Event` — событие;
+- `Category` — категория события;
+- `Compilation` — подборка событий;
+- `Request` — заявка на участие;
+- `Comment` — комментарий;
+- `EndpointHit` — запись о запросе для сервиса статистики.
+
+Комментарии поддерживают состояния:
+
+- `PENDING`;
+- `PUBLISHED`;
+- `REJECTED`;
+- `DELETED`.
+
+## Service Discovery
+
+Все сервисы регистрируются в Eureka.
+
+Eureka Server доступен по адресу:
+
+```text
+http://localhost:8761
+```
+
+Бизнес-сервисы могут запускаться на динамических внутренних портах и находить друг друга по имени приложения.
+
+Примеры имён сервисов:
+
+```text
+USER-SERVICE
+EVENT-SERVICE
+REQUEST-SERVICE
+COMMENT-SERVICE
+STATS-SERVER
+GATEWAY-SERVER
+CONFIG-SERVER
+```
+
+## Config Server
+
+Конфигурация сервисов централизована в `config-server`.
+
+Config Server доступен по адресу:
+
+```text
+http://localhost:8888
+```
+
+Пример получения конфигурации `event-service`:
+
+```text
+http://localhost:8888/event-service/default
+```
+
+В Config Server находятся конфигурации:
+
+```text
+user-service.properties
+event-service.properties
+request-service.properties
+comment-service.properties
+gateway-server.properties
+```
+
+## API Gateway
+
+Внешнее API доступно через:
+
+```text
+http://localhost:8080
+```
+
+Gateway маршрутизирует запросы к соответствующим сервисам через Eureka и LoadBalancer.
+
+Основные направления маршрутизации:
+
+```text
+/admin/users/**                         -> user-service
+
+/users/*/requests/**                   -> request-service
+/users/*/events/*/requests/**          -> request-service
+
+/events/*/comments/**                  -> comment-service
+/users/*/comments/**                   -> comment-service
+/users/*/events/*/comments/**          -> comment-service
+/admin/comments/**                     -> comment-service
+
+/events/**                             -> event-service
+/categories/**                         -> event-service
+/compilations/**                       -> event-service
+/users/*/events/**                     -> event-service
+/admin/events/**                       -> event-service
+/admin/categories/**                   -> event-service
+/admin/compilations/**                 -> event-service
+```
+
+## Межсервисное взаимодействие
+
+Feign-контракты находятся в модуле `common`.
+
+Используются следующие клиенты:
+
+### UserClient
+
+Используется для получения информации о пользователях.
+
+```text
+user-service
+/internal/users
+```
+
+### EventClient
+
+Используется для получения информации о событиях.
+
+```text
+event-service
+/internal/events
+```
+
+### RequestClient
+
+Используется для получения информации о заявках и количестве подтверждённых заявок.
+
+```text
+request-service
+/internal/requests
+```
+
+### CommentClient
+
+Используется для получения количества опубликованных комментариев.
+
+```text
+comment-service
+/internal/comments
+```
+
+## Отказоустойчивость межсервисных вызовов
+
+Для OpenFeign настроены ограничения времени ожидания:
+
+```properties
+spring.cloud.openfeign.client.config.default.connectTimeout=1500
+spring.cloud.openfeign.client.config.default.readTimeout=2500
+```
+
+Это позволяет сервисам быстро реагировать на недоступность зависимостей и не зависать на сетевых запросах.
+
+Для некритичных агрегированных данных применяется graceful degradation.
+
+Если `comment-service` временно недоступен, `event-service` продолжает возвращать данные события со значением:
+
+```json
+{
+  "comments": 0
+}
+```
+
+Недоступность сервиса комментариев не делает получение события невозможным.
+
+Для получения количества подтверждённых заявок используется Resilience4j Retry.
+
+При временной недоступности `request-service` выполняется повторная попытка межсервисного вызова. Если после повторных попыток сервис остаётся недоступен, применяется fallback:
+
+```text
+confirmedRequests = 0
+```
+
+При этом `event-service` продолжает обрабатывать запрос и возвращает HTTP `200`, вместо ошибки `5xx`.
+
+Retry и fallback используются для операций чтения агрегированных данных. Автоматические retry для изменяющих состояние запросов `POST` и `PATCH` не используются, чтобы исключить риск повторного выполнения операции.
+
+Параметры Retry централизованно задаются через Config Server:
+
+```properties
+resilience4j.retry.instances.requestService.maxAttempts=2
+resilience4j.retry.instances.requestService.waitDuration=100ms
+```
 
 ## Примеры API
 
-### Публичный API
+### Публичный API событий
 
 ```http
 GET /events
 GET /events/{id}
+
 GET /categories
 GET /categories/{catId}
+
 GET /compilations
 GET /compilations/{compId}
+```
+
+### Пользовательский API событий
+
+```http
+POST /users/{userId}/events
+GET /users/{userId}/events
+GET /users/{userId}/events/{eventId}
+PATCH /users/{userId}/events/{eventId}
+```
+
+### API заявок
+
+```http
+POST /users/{userId}/requests?eventId={eventId}
+GET /users/{userId}/requests
+PATCH /users/{userId}/requests/{requestId}/cancel
+```
+
+Также поддерживается обработка заявок инициатором события.
+
+### API комментариев
+
+Публичные запросы:
+
+```http
 GET /events/{eventId}/comments
 GET /events/{eventId}/comments/{commentId}
 ```
 
-### Приватный API
+Пользовательские запросы:
 
 ```http
-POST /users/{userId}/events
-PATCH /users/{userId}/events/{eventId}
-GET /users/{userId}/events
-POST /users/{userId}/requests
-PATCH /users/{userId}/requests/{requestId}/cancel
 POST /users/{userId}/events/{eventId}/comments
+GET /users/{userId}/comments
 PATCH /users/{userId}/comments/{commentId}
 DELETE /users/{userId}/comments/{commentId}
 ```
 
-### Административный API
+Административные запросы:
+
+```http
+GET /admin/comments
+PATCH /admin/comments/{commentId}/publish
+PATCH /admin/comments/{commentId}/reject
+DELETE /admin/comments/{commentId}
+```
+
+### Административный API пользователей
+
+```http
+POST /admin/users
+GET /admin/users
+DELETE /admin/users/{userId}
+```
+
+### Административный API категорий
 
 ```http
 POST /admin/categories
 PATCH /admin/categories/{catId}
 DELETE /admin/categories/{catId}
+```
 
-POST /admin/users
-GET /admin/users
-DELETE /admin/users/{userId}
+### Административный API событий
 
+```http
 PATCH /admin/events/{eventId}
+```
+
+### Административный API подборок
+
+```http
 POST /admin/compilations
 PATCH /admin/compilations/{compId}
 DELETE /admin/compilations/{compId}
-
-GET /admin/comments
-PATCH /admin/comments/{commentId}/publish
-PATCH /admin/comments/{commentId}/reject
-DELETE /admin/comments/{commentId}
 ```
 
 ### Сервис статистики
@@ -142,59 +441,202 @@ POST /hit
 GET /stats
 ```
 
+## Обработка ошибок
+
+Каждый бизнес-сервис содержит собственный обработчик ошибок REST API.
+
+Ошибки возвращаются в едином формате `ApiError`.
+
+Обрабатываются, в частности:
+
+- ошибки валидации;
+- отсутствие сущности;
+- конфликт бизнес-правил;
+- некорректные параметры запроса;
+- нарушения ограничений данных.
+
+## Инфраструктурные порты
+
+| Компонент | Порт |
+|---|---:|
+| API Gateway | `8080` |
+| Eureka Server | `8761` |
+| Config Server | `8888` |
+| Stats PostgreSQL | `6541` |
+| User PostgreSQL | `6543` |
+| Request PostgreSQL | `6544` |
+| Event PostgreSQL | `6545` |
+| Comment PostgreSQL | `6546` |
+
 ## Запуск проекта
 
-### Через Maven
+### Требования
+
+Для запуска необходимы:
+
+- Java 21;
+- Maven;
+- Docker;
+- Docker Compose.
+
+### Запуск через Docker Compose
+
+Из корневой директории проекта:
+
+```bash
+docker compose up -d --build
+```
+
+Проверить состояние контейнеров:
+
+```bash
+docker compose ps
+```
+
+После запуска доступны:
+
+```text
+API Gateway:
+http://localhost:8080
+
+Eureka:
+http://localhost:8761
+
+Config Server:
+http://localhost:8888
+```
+
+### Остановка
+
+```bash
+docker compose down
+```
+
+### Полная очистка данных
+
+Для удаления контейнеров вместе с PostgreSQL volumes:
+
+```bash
+docker compose down -v
+```
+
+## Сборка и тестирование
+
+Полная сборка Maven reactor:
+
+```bash
+mvn clean test
+```
+
+или:
 
 ```bash
 mvn clean package
 ```
 
-### Через Docker Compose
+Проверки качества:
 
 ```bash
-docker-compose up --build
-```
-
-## Проверка качества кода
-
-В проекте настроены инструменты статического анализа и проверки качества:
-
-```bash
-mvn clean test
 mvn clean package -P check
 mvn clean verify -P coverage
 ```
 
 Используются:
 
-- Checkstyle
-- SpotBugs
-- JaCoCo
+- Checkstyle;
+- SpotBugs;
+- JaCoCo.
+
+## Проверка микросервисной архитектуры
+
+Проект проверялся после полного удаления существующих PostgreSQL volumes:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+После чистого запуска были проверены:
+
+- регистрация сервисов в Eureka;
+- получение конфигурации из Config Server;
+- маршрутизация запросов через Gateway;
+- создание пользователей;
+- создание категории;
+- создание события;
+- публикация события;
+- создание заявки;
+- создание комментария;
+- публикация комментария;
+- получение публичных комментариев;
+- межсервисное получение количества подтверждённых заявок;
+- межсервисное получение количества опубликованных комментариев;
+- отдельные PostgreSQL базы для сервисов;
+- отсутствие таблиц других сервисов в базе `event-service`;
+- отсутствие старого монолитного `ewm-service`.
+
+Пример итогового состояния события при доступных сервисах:
+
+```text
+state             = PUBLISHED
+confirmedRequests = 1
+comments          = 1
+```
+
+## Проверка отказоустойчивости
+
+Проверено поведение приложения при остановке зависимых сервисов.
+
+При остановленном `comment-service`:
+
+```text
+event-service -> продолжает отвечать
+HTTP          -> 200
+comments      -> 0
+```
+
+При остановленном `stats-server` получение события также продолжает работать без ошибки `5xx`.
+
+При остановленном `request-service` используется Resilience4j Retry и graceful degradation:
+
+```text
+event-service     -> продолжает отвечать
+HTTP              -> 200
+confirmedRequests -> 0
+```
+
+После восстановления зависимых сервисов `event-service` снова получает актуальные данные через межсервисные вызовы.
+
+Таким образом, временная недоступность сервисов, данные которых не являются обязательными для формирования ответа, не приводит к ошибке `5xx` публичного API.
 
 ## Что демонстрирует проект
 
-- разработку многомодульного Spring Boot backend-приложения;
-- проектирование REST API;
+Проект демонстрирует:
+
+- разработку микросервисной backend-системы на Spring Boot;
+- построение многомодульного Maven-проекта;
+- использование Spring Cloud;
+- Service Discovery через Eureka;
+- централизованную конфигурацию через Config Server;
+- маршрутизацию API через Spring Cloud Gateway;
+- межсервисное взаимодействие через OpenFeign;
+- балансировку запросов через Spring Cloud LoadBalancer;
+- отказоустойчивость операций чтения через Resilience4j Retry и fallback;
+- подход Database per Service;
 - работу с PostgreSQL и Hibernate;
-- разделение приложения на публичный, приватный и административный API;
-- реализацию бизнес-логики модерации событий и заявок;
-- **реализацию комментариев к событиям с модерацией (PENDING → PUBLISHED/REJECTED);**
-- взаимодействие основного сервиса со статистическим сервисом;
-- Docker-контейнеризацию;
-- настройку проверки качества кода через Checkstyle, SpotBugs и JaCoCo.
+- проектирование REST API;
+- разделение публичного, пользовательского и административного API;
+- реализацию бизнес-логики событий и заявок;
+- модерацию комментариев;
+- интеграцию со статистическим сервисом;
+- graceful degradation для некритичных зависимостей;
+- ограничение времени межсервисных вызовов;
+- Docker-контейнеризацию всей системы;
+- тестирование и статический анализ кода.
 
----
+## Спецификация внешнего API
 
-## 📈 Мои ключевые задачи и достижения
+Внешние запросы к приложению выполняются через API Gateway на порту `8080`.
 
-| Задача | Решение |
-|--------|---------|
-| Административный API | Реализовал CRUD операций для категорий, пользователей и подборок событий |
-| Docker-инфраструктура | Настроил контейнеризацию для ewm-service, stats-server, PostgreSQL |
-| Схема БД | Спроектировал и написал schema.sql для всех сущностей с индексами |
-| Обработка ошибок | Создал единый ErrorHandler с корректными статусами и форматом ApiError |
-| Комментарии к событиям | Разработал полную модель данных, репозиторий, DTO и мапперы |
-| Оптимизация N+1 | Добавил метод `countByEventIdsAndStatus` для массовой загрузки количества комментариев |
-
----
+- Основной API: https://github.com/yandex-praktikum/java-explore-with-me/blob/main/ewm-main-service-spec.json
+- API сервиса статистики: https://github.com/yandex-praktikum/java-explore-with-me/blob/main/ewm-stats-service-spec.json

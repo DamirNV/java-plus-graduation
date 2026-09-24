@@ -3,7 +3,8 @@ FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY . .
 
-RUN mvn -pl infra/discovery-server -am package -DskipTests
+RUN --mount=type=cache,id=ewm-maven,target=/root/.m2,sharing=locked \
+    mvn -Dmaven.wagon.http.retryHandler.count=5 -pl infra/discovery-server -am package -DskipTests
 
 FROM eclipse-temurin:21-jre
 
