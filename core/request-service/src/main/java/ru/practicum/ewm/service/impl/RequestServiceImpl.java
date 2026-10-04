@@ -18,6 +18,8 @@ import ru.practicum.ewm.model.Request;
 import ru.practicum.ewm.model.RequestStatus;
 import ru.practicum.ewm.repository.RequestRepository;
 import ru.practicum.ewm.service.RequestService;
+import ru.practicum.ewm.stats.proto.ActionTypeProto;
+import ru.practicum.stats.client.CollectorClient;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -32,6 +34,7 @@ public class RequestServiceImpl implements RequestService {
     private final UserClient userClient;
     private final EventClient eventClient;
     private final RequestMapper requestMapper;
+    private final CollectorClient collectorClient;
 
     @Override
     public ParticipationRequestDto addRequest(
@@ -104,9 +107,15 @@ public class RequestServiceImpl implements RequestService {
                 )
                 .build();
 
-        return requestMapper.toDto(
-                requestRepository.save(request)
+        Request saved = requestRepository.save(request);
+
+        collectorClient.sendUserAction(
+                userId,
+                eventId,
+                ActionTypeProto.ACTION_REGISTER
         );
+
+        return requestMapper.toDto(saved);
     }
 
     @Override
