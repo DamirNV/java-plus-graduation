@@ -185,6 +185,40 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
+
+  analyzer-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: analyzer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - analyzer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d analyzer" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: stats-service/analyzer/Dockerfile
+    depends_on:
+      analyzer-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://analyzer-db:5432/analyzer
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
   stats-server:
     build:
       context: .
@@ -384,6 +418,7 @@ services:
 
 
 volumes:
+  analyzer-db-data:
   stats-db-data:
   user-db-data:
   request-db-data:
