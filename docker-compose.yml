@@ -118,6 +118,83 @@ services:
       retries: 10
 
 
+
+  kafka:
+    image: bitnami/kafka:3.7.0
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  kafka-init:
+    image: bitnami/kafka:3.7.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint:
+      - /bin/bash
+      - -c
+    command: >-
+      /opt/bitnami/kafka/bin/kafka-topics.sh
+      --bootstrap-server kafka:9092
+      --create
+      --if-not-exists
+      --topic stats.user-actions.v1
+      --partitions 1
+      --replication-factor 1
+      &&
+      /opt/bitnami/kafka/bin/kafka-topics.sh
+      --bootstrap-server kafka:9092
+      --create
+      --if-not-exists
+      --topic stats.events-similarity.v1
+      --partitions 1
+      --replication-factor 1
+
+  collector:
+    build:
+      context: .
+      dockerfile: stats-service/collector/Dockerfile
+    depends_on:
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: stats-service/aggregator/Dockerfile
+    depends_on:
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
   stats-server:
     build:
       context: .
