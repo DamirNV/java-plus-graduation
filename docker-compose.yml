@@ -17,16 +17,19 @@ services:
     build:
       context: .
       dockerfile: infra/config-server/Dockerfile
-    ports:
-      - "18888:8888"
+
     depends_on:
       discovery-server:
         condition: service_healthy
     environment:
-      SERVER_PORT: 8888
+
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://localhost:8888/gateway-server/default >/dev/null" ]
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/CONFIG-SERVER
+          | grep -q '<status>UP</status>'
       interval: 2s
       timeout: 2s
       retries: 30
@@ -228,31 +231,27 @@ services:
         condition: service_healthy
       config-server:
         condition: service_healthy
-    ports:
-      - "19090:9090"
+
     restart: on-failure
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          curl -fsS http://localhost:9090/actuator/health
-          | grep -q '"status":"UP"'
-          && curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
+          curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
           | grep -q '<status>UP</status>'
       interval: 2s
       timeout: 2s
       retries: 45
       start_period: 5s
     environment:
-      SERVER_PORT: 9090
+
       POSTGRES_HOST: stats-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: stats
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   user-service:
@@ -280,8 +279,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   request-service:
@@ -309,8 +307,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   event-service:
@@ -321,8 +318,6 @@ services:
       event-db:
         condition: service_healthy
       config-server:
-        condition: service_healthy
-      stats-server:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -344,8 +339,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   comment-service:
@@ -379,8 +373,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   gateway-server:
@@ -393,8 +386,6 @@ services:
       discovery-server:
         condition: service_healthy
       config-server:
-        condition: service_healthy
-      stats-server:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -413,8 +404,7 @@ services:
       start_period: 5s
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
 volumes:
