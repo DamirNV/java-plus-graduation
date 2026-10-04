@@ -19,4 +19,9 @@ public interface RequestClient {
     Map<Long, Long> countConfirmedRequests(
             @RequestParam("eventIds") List<Long> eventIds
     );
+    @GetMapping("/confirmed/exists")
+    boolean hasConfirmedRequest(
+            @RequestParam("eventId") Long eventId,
+            @RequestParam("userId") Long userId
+    );
 }
