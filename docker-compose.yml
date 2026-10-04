@@ -229,7 +229,7 @@ services:
       config-server:
         condition: service_healthy
     ports:
-      - "9090:9090"
+      - "19090:9090"
     restart: on-failure
     healthcheck:
       test:
