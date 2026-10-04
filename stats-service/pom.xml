@@ -2,6 +2,7 @@
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -15,9 +16,17 @@
     <artifactId>stats-service</artifactId>
 
     <modules>
+        <!-- Старые модули пока сохраняем до завершения миграции -->
         <module>stats-dto</module>
         <module>stats-server</module>
         <module>stats-client</module>
+
+        <!-- Recommendation system -->
+        <module>stats-proto</module>
+        <module>stats-avro</module>
+        <module>collector</module>
+        <module>aggregator</module>
+        <module>analyzer</module>
     </modules>
 
     <dependencies>
@@ -26,4 +35,5 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
     </dependencies>
+
 </project>
