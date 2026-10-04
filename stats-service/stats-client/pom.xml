@@ -14,20 +14,39 @@
     <artifactId>stats-client</artifactId>
 
     <dependencies>
+
+        <!-- Legacy REST statistics client -->
         <dependency>
             <groupId>ru.practicum</groupId>
             <artifactId>stats-dto</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
 
+        <!-- Recommendation system protobuf contracts -->
+        <dependency>
+            <groupId>ru.practicum</groupId>
+            <artifactId>stats-proto</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- gRPC clients -->
+        <dependency>
+            <groupId>net.devh</groupId>
+            <artifactId>grpc-client-spring-boot-starter</artifactId>
+            <version>3.1.0.RELEASE</version>
+        </dependency>
+
+        <!-- Legacy REST client dependencies -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-commons</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-web</artifactId>
         </dependency>
+
     </dependencies>
 
 </project>
