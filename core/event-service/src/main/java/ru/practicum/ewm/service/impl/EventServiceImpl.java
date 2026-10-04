@@ -162,6 +162,7 @@ public class EventServiceImpl implements EventService {
                 commentsCount
         );
     }
+
     @Override
     public List<EventShortDto> getUserEvents(Long userId, int from, int size) {
         checkUserExists(userId);
@@ -230,6 +231,7 @@ public class EventServiceImpl implements EventService {
                 commentsCount
         );
     }
+
     @Override
     public EventFullDto updateEventByUser(
             Long userId,
@@ -511,7 +513,7 @@ public class EventServiceImpl implements EventService {
             Long eventId,
             long userId
     ) {
-        eventRepository.findById(eventId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() ->
                         new NotFoundException(
                                 "Event with id=" +
@@ -520,13 +522,16 @@ public class EventServiceImpl implements EventService {
                         )
                 );
 
-        boolean attended =
+        boolean hasConfirmedRequest =
                 requestClient.hasConfirmedRequest(
                         eventId,
                         userId
                 );
 
-        if (!attended) {
+        boolean eventHasStarted =
+                !event.getEventDate().isAfter(LocalDateTime.now());
+
+        if (!hasConfirmedRequest || !eventHasStarted) {
             throw new IllegalArgumentException(
                     "User can like only attended events"
             );
@@ -538,6 +543,7 @@ public class EventServiceImpl implements EventService {
                 ActionTypeProto.ACTION_LIKE
         );
     }
+
     private List<EventShortDto> toShortDtos(List<Event> events) {
         return toShortDtos(events, getConfirmedRequests(events));
     }
@@ -652,6 +658,7 @@ public class EventServiceImpl implements EventService {
             return Map.of();
         }
     }
+
     private Map<Long, UserShortDto> getUsers(List<Event> events) {
         if (events == null || events.isEmpty()) {
             return Map.of();
