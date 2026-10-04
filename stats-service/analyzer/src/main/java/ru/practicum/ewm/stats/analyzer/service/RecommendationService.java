@@ -179,6 +179,13 @@ public class RecommendationService {
             }
         }
 
+        recommendations.sort(
+                Comparator
+                        .comparingDouble(Recommendation::score)
+                        .reversed()
+                        .thenComparingLong(Recommendation::eventId)
+        );
+
         return recommendations;
     }
 
