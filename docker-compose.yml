@@ -171,6 +171,7 @@ services:
         condition: service_completed_successfully
     restart: on-failure
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
@@ -185,6 +186,7 @@ services:
         condition: service_completed_successfully
     restart: on-failure
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
@@ -216,6 +218,7 @@ services:
         condition: service_completed_successfully
     restart: on-failure
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://analyzer-db:5432/analyzer
@@ -244,6 +247,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
 
       POSTGRES_HOST: stats-db
       POSTGRES_PORT: 5432
@@ -275,6 +279,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/users
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -303,6 +308,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://request-db:5432/requests
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -335,6 +341,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/events
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -369,6 +376,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/comments
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -404,6 +412,7 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
 
 
