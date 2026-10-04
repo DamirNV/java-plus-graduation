@@ -71,7 +71,8 @@ class CommentServiceImplTest {
         )).thenReturn(new PageImpl<>(List.of(comment)));
 
         when(commentMapper.toDto(comment)).thenReturn(dto);
-        when(userClient.getUser(AUTHOR_ID)).thenReturn(user);
+        when(userClient.getUsers(List.of(AUTHOR_ID))).thenReturn(List.of(user));
+        when(user.getId()).thenReturn(AUTHOR_ID);
 
         List<CommentDto> result =
                 commentService.getEventComments(2L, 0, 10, request);
@@ -148,7 +149,8 @@ class CommentServiceImplTest {
         )).thenReturn(new PageImpl<>(List.of(comment)));
 
         when(commentMapper.toDto(comment)).thenReturn(dto);
-        when(userClient.getUser(AUTHOR_ID)).thenReturn(user);
+        when(userClient.getUsers(List.of(AUTHOR_ID))).thenReturn(List.of(user));
+        when(user.getId()).thenReturn(AUTHOR_ID);
 
         List<CommentDto> result =
                 commentService.getAllComments("PENDING", 0, 10);
