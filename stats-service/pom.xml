@@ -16,7 +16,7 @@
     <artifactId>stats-service</artifactId>
 
     <modules>
-        <!-- Старые модули пока сохраняем до завершения миграции -->
+        <!-- REST statistics API retained for backward compatibility -->
         <module>stats-dto</module>
         <module>stats-server</module>
         <module>stats-client</module>

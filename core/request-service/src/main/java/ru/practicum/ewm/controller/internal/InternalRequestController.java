@@ -46,6 +46,7 @@ public class InternalRequestController {
                         )
                 );
     }
+
     @GetMapping("/confirmed/exists")
     public boolean hasConfirmedRequest(
             @RequestParam Long eventId,

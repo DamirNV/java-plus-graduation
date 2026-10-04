@@ -1,9 +1,39 @@
+# Version control
 .git
 .gitignore
+.github
+
+# IDE
 .idea
-*.iml
-
-**/target
 **/.idea
+*.iml
+.vscode
 
+# Maven / Java build output
+target
+**/target
+out
+**/out
+*.class
+*.jar
+*.war
+
+# Logs and crash dumps
+*.log
+hs_err_pid*
+replay_pid*
+
+# Local archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Files not required to build application images
 README.md
+postman
