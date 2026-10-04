@@ -46,59 +46,28 @@ Explore With Me — backend-приложение для публикации с�
 
 Система состоит из бизнес-сервисов, инфраструктурных сервисов и подсистемы рекомендаций.
 
-~~~text
-                              +------------------+
-                              |      Client      |
-                              +---------+--------+
-                                        |
-                                        v
-                              +------------------+
-                              |  Gateway Server  |
-                              +---------+--------+
-                                        |
-            +---------------------------+---------------------------+
-            |                           |                           |
-            v                           v                           v
-     +-------------+             +-------------+             +-------------+
-     | user-service|             |event-service|             |request-     |
-     +-------------+             +------+------+             |service      |
-                                       |                     +------+------+
-                                       |                            |
-                                       | gRPC                       | gRPC
-                                       |                            |
-                                       +-------------+--------------+
-                                                     |
-                                                     v
-                                              +-------------+
-                                              |  Collector  |
-                                              +------+------+
-                                                     |
-                                                     | Kafka
-                                                     v
-                                          stats.user-actions.v1
-                                                     |
-                                  +------------------+------------------+
-                                  |                                     |
-                                  v                                     v
-                           +--------------+                       +------------+
-                           |  Aggregator  |                       |  Analyzer  |
-                           +------+-------+                       +------+-----+
-                                  |                                      ^
-                                  | Kafka                                |
-                                  v                                      |
-                      stats.events-similarity.v1 ------------------------+
-                                                                         |
-                                                                         | gRPC
-                                                                         |
-                                                                  event-service
+```mermaid
+flowchart TD
+    Client[Client] --> Gateway[Gateway Server]
 
-     +---------------+
-     |comment-service|
-     +---------------+
-            ^
-            |
-       Gateway / REST
-~~~
+    Gateway --> User[user-service]
+    Gateway --> Event[event-service]
+    Gateway --> Request[request-service]
+    Gateway --> Comment[comment-service]
+
+    Event -- "gRPC: VIEW / LIKE" --> Collector[Collector]
+    Request -- "gRPC: REGISTER" --> Collector
+
+    Collector -- Kafka --> UserActions[stats.user-actions.v1]
+
+    UserActions --> Aggregator[Aggregator]
+    UserActions --> Analyzer[Analyzer]
+
+    Aggregator -- Kafka --> Similarity[stats.events-similarity.v1]
+    Similarity --> Analyzer
+
+    Event -- "gRPC: рекомендации, похожие события, рейтинг" --> Analyzer
+```
 
 ### Бизнес-сервисы
 
@@ -126,17 +95,17 @@ Explore With Me — backend-приложение для публикации с�
 
 `collector` принимает пользовательские действия по gRPC и публикует их в Kafka-топик:
 
-~~~text
+```text
 stats.user-actions.v1
-~~~
+```
 
 `aggregator` читает действия пользователей, хранит максимальный вес действия пользователя для каждой пары пользователь/событие и инкрементально пересчитывает сходство событий.
 
 Результаты публикуются в Kafka-топик:
 
-~~~text
+```text
 stats.events-similarity.v1
-~~~
+```
 
 `analyzer` потребляет пользовательские действия и рассчитанные сходства, сохраняет данные в PostgreSQL и предоставляет gRPC API для:
 
@@ -150,16 +119,16 @@ stats.events-similarity.v1
 
 Доступ к нему снаружи также выполняется через Gateway:
 
-~~~http
+```http
 POST /hit
 GET /stats
-~~~
+```
 
 `event-service` больше не зависит от старого REST API статистики.
 
 ## Maven-модули
 
-~~~text
+```text
 java-plus-graduation
 |
 +-- core
@@ -186,7 +155,7 @@ java-plus-graduation
     +-- collector
     +-- aggregator
     +-- analyzer
-~~~
+```
 
 ## Межсервисное взаимодействие
 
@@ -194,33 +163,33 @@ java-plus-graduation
 
 Общие Feign-контракты находятся в модуле:
 
-~~~text
+```text
 core/common
-~~~
+```
 
 Основные внутренние клиенты:
 
-~~~text
+```text
 UserClient       -> user-service
 EventClient      -> event-service
 RequestClient    -> request-service
 CommentClient    -> comment-service
-~~~
+```
 
 Модуль `stats-client` содержит три клиента:
 
-~~~text
+```text
 StatsClient      -> legacy REST statistics API
 CollectorClient  -> gRPC Collector
 AnalyzerClient   -> gRPC Analyzer
-~~~
+```
 
 Collector и Analyzer находятся через Eureka:
 
-~~~properties
+```properties
 grpc.client.collector.address=discovery:///collector
 grpc.client.analyzer.address=discovery:///analyzer
-~~~
+```
 
 ## Пользовательские действия
 
@@ -236,9 +205,9 @@ grpc.client.analyzer.address=discovery:///analyzer
 
 Например, последовательность:
 
-~~~text
+```text
 VIEW -> REGISTER -> LIKE
-~~~
+```
 
 даёт итоговый вес `1.0`, а не сумму `2.2`.
 
@@ -248,16 +217,16 @@ VIEW -> REGISTER -> LIKE
 
 Действие отправляется при запросе конкретного события:
 
-~~~http
+```http
 GET /events/{id}
 X-EWM-USER-ID: {userId}
-~~~
+```
 
 Публичный список:
 
-~~~http
+```http
 GET /events
-~~~
+```
 
 не создаёт `VIEW`.
 
@@ -265,18 +234,18 @@ GET /events
 
 После создания заявки на участие через:
 
-~~~http
+```http
 POST /users/{userId}/requests?eventId={eventId}
-~~~
+```
 
 `request-service` отправляет действие `REGISTER` в Collector.
 
 ### LIKE
 
-~~~http
+```http
 PUT /events/{eventId}/like
 X-EWM-USER-ID: {userId}
-~~~
+```
 
 LIKE разрешён только пользователю, который имеет подтверждённую заявку на мероприятие и дата начала мероприятия уже наступила (`eventDate` не находится в будущем).
 
@@ -288,13 +257,13 @@ Analyzer рассчитывает рейтинг как сумму максим�
 
 Например:
 
-~~~text
+```text
 user 1 -> LIKE      = 1.0
 user 2 -> REGISTER  = 0.8
 user 3 -> VIEW      = 0.4
 
 rating = 2.2
-~~~
+```
 
 Рейтинг используется при формировании DTO событий.
 
@@ -306,18 +275,18 @@ Aggregator рассчитывает сходство событий на осн�
 
 Для пары событий используется нормализованная мера сходства:
 
-~~~text
+```text
 similarity(A, B) = S_min / sqrt(S_A * S_B)
-~~~
+```
 
 где:
 
-~~~text
+```text
 S_A   — сумма весов взаимодействий с событием A
 S_B   — сумма весов взаимодействий с событием B
 S_min — сумма минимальных весов для пользователей,
         взаимодействовавших с обоими событиями
-~~~
+```
 
 Пара событий хранится в каноническом порядке: событие с меньшим ID идёт первым.
 
@@ -340,7 +309,7 @@ Analyzer формирует рекомендации на основании и�
 
 Общая схема:
 
-~~~text
+```text
 история взаимодействий пользователя
                 |
                 v
@@ -360,14 +329,14 @@ Analyzer формирует рекомендации на основании и�
                 |
                 v
  персональные рекомендации
-~~~
+```
 
 REST endpoint:
 
-~~~http
+```http
 GET /events/recommendations
 X-EWM-USER-ID: {userId}
-~~~
+```
 
 `event-service` получает рекомендации от Analyzer по gRPC, загружает соответствующие опубликованные события из своей БД и возвращает `EventShortDto`.
 
@@ -375,43 +344,43 @@ X-EWM-USER-ID: {userId}
 
 Protocol Buffers находятся в:
 
-~~~text
+```text
 stats-service/stats-proto/src/main/proto
-~~~
+```
 
 Collector предоставляет:
 
-~~~text
+```text
 UserActionController
   CollectUserAction(UserActionProto)
-~~~
+```
 
 Analyzer предоставляет:
 
-~~~text
+```text
 RecommendationsController
   GetRecommendationsForUser(...)
   GetSimilarEvents(...)
   GetInteractionsCount(...)
-~~~
+```
 
 HTTP- и gRPC-порты Collector и Analyzer выбираются динамически.
 
 gRPC-порт публикуется в metadata экземпляра сервиса в Eureka, а клиенты используют service discovery:
 
-~~~properties
+```properties
 grpc.client.collector.address=discovery:///collector
 grpc.client.analyzer.address=discovery:///analyzer
-~~~
+```
 
 ## Kafka
 
 Используются два Kafka-топика:
 
-~~~text
+```text
 stats.user-actions.v1
 stats.events-similarity.v1
-~~~
+```
 
 `stats.user-actions.v1` содержит пользовательские действия.
 
@@ -419,15 +388,15 @@ stats.events-similarity.v1
 
 В Docker Compose Kafka доступна внутри сети как:
 
-~~~text
+```text
 kafka:9092
-~~~
+```
 
 Для локальной диагностики с хоста:
 
-~~~text
+```text
 localhost:19094
-~~~
+```
 
 ## Хранение данных
 
@@ -450,19 +419,19 @@ Analyzer имеет отдельную PostgreSQL БД.
 
 Eureka внутри Docker-сети работает на:
 
-~~~text
+```text
 discovery-server:8761
-~~~
+```
 
 С хоста Eureka UI доступен по адресу:
 
-~~~text
+```text
 http://localhost:18761
-~~~
+```
 
 В Eureka регистрируются, в частности:
 
-~~~text
+```text
 CONFIG-SERVER
 GATEWAY-SERVER
 USER-SERVICE
@@ -473,7 +442,7 @@ STATS-SERVER
 COLLECTOR
 AGGREGATOR
 ANALYZER
-~~~
+```
 
 Большинство сервисов запускается на динамических внутренних портах.
 
@@ -485,24 +454,24 @@ Config Server также регистрируется в Eureka и исполь�
 
 Клиенты находят его через:
 
-~~~properties
+```properties
 spring.cloud.config.discovery.enabled=true
 spring.cloud.config.discovery.service-id=config-server
-~~~
+```
 
 В `application.properties` клиентов используется:
 
-~~~properties
+```properties
 spring.config.import=optional:configserver:
-~~~
+```
 
 Это позволяет unit- и WebMvc-тестам запускаться без поднятой инфраструктуры.
 
 При запуске через Docker Compose для Config Client сервисов устанавливается:
 
-~~~text
+```text
 SPRING_CLOUD_CONFIG_FAIL_FAST=true
-~~~
+```
 
 Поэтому контейнер не продолжит запуск, если Config Server недоступен через Service Discovery.
 
@@ -510,13 +479,13 @@ SPRING_CLOUD_CONFIG_FAIL_FAST=true
 
 Централизованные конфигурации находятся в:
 
-~~~text
+```text
 infra/config-server/src/main/resources/config/
-~~~
+```
 
 В том числе:
 
-~~~text
+```text
 user-service.properties
 event-service.properties
 request-service.properties
@@ -526,19 +495,19 @@ gateway-server.properties
 collector.properties
 aggregator.properties
 analyzer.properties
-~~~
+```
 
 ## API Gateway
 
 Внешний REST API доступен через:
 
-~~~text
+```text
 http://localhost:8080
-~~~
+```
 
 Основные маршруты:
 
-~~~text
+```text
 /admin/users/**                          -> user-service
 
 /users/*/requests/**                    -> request-service
@@ -559,45 +528,45 @@ http://localhost:8080
 
 /hit                                    -> stats-server
 /stats                                  -> stats-server
-~~~
+```
 
 ## Основные REST endpoints
 
 ### События
 
-~~~http
+```http
 GET /events
 GET /events/{id}
 GET /events/recommendations
 PUT /events/{eventId}/like
-~~~
+```
 
 Для запросов конкретного события, рекомендаций и LIKE используется:
 
-~~~http
+```http
 X-EWM-USER-ID: {userId}
-~~~
+```
 
 ### Пользовательские события
 
-~~~http
+```http
 POST  /users/{userId}/events
 GET   /users/{userId}/events
 GET   /users/{userId}/events/{eventId}
 PATCH /users/{userId}/events/{eventId}
-~~~
+```
 
 ### Заявки
 
-~~~http
+```http
 POST  /users/{userId}/requests?eventId={eventId}
 GET   /users/{userId}/requests
 PATCH /users/{userId}/requests/{requestId}/cancel
-~~~
+```
 
 ### Комментарии
 
-~~~http
+```http
 GET    /events/{eventId}/comments
 GET    /events/{eventId}/comments/{commentId}
 
@@ -610,7 +579,7 @@ GET    /admin/comments
 PATCH  /admin/comments/{commentId}/publish
 PATCH  /admin/comments/{commentId}/reject
 DELETE /admin/comments/{commentId}
-~~~
+```
 
 ## Отказоустойчивость
 
@@ -620,7 +589,7 @@ DELETE /admin/comments/{commentId}
 
 В частности:
 
-~~~text
+```text
 недоступен comment-service
     -> event-service продолжает отвечать
     -> comments = 0
@@ -628,7 +597,7 @@ DELETE /admin/comments/{commentId}
 недоступен request-service
     -> выполняется Retry
     -> при окончательной ошибке confirmedRequests = 0
-~~~
+```
 
 Retry применяется к операциям чтения.
 
@@ -645,58 +614,58 @@ Retry применяется к операциям чтения.
 
 Запуск всей системы:
 
-~~~bash
+```bash
 docker compose up -d --build
-~~~
+```
 
 Проверка:
 
-~~~bash
+```bash
 docker compose ps
-~~~
+```
 
 После запуска:
 
-~~~text
+```text
 API Gateway : http://localhost:8080
 Eureka      : http://localhost:18761
 Kafka       : localhost:19094
-~~~
+```
 
 Config Server и внутренние сервисы не требуют фиксированных host ports.
 
 Остановка:
 
-~~~bash
+```bash
 docker compose down
-~~~
+```
 
 Удаление контейнеров вместе с persistent volumes:
 
-~~~bash
+```bash
 docker compose down -v
-~~~
+```
 
 ## Сборка и тестирование
 
 Полный Maven reactor:
 
-~~~bash
+```bash
 mvn clean test
-~~~
+```
 
 Сборка:
 
-~~~bash
+```bash
 mvn clean package
-~~~
+```
 
 Проверки качества:
 
-~~~bash
+```bash
 mvn clean package -Pcheck
 mvn clean verify -Pcoverage
-~~~
+```
 
 ## Проверенная интеграция
 
