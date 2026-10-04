@@ -1,6 +1,5 @@
 package ru.practicum.ewm.controller.publicapi;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
@@ -32,8 +31,7 @@ public class PublicEventController {
             @RequestParam(defaultValue = "false") Boolean onlyAvailable,
             @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") @PositiveOrZero int from,
-            @RequestParam(defaultValue = "10") @Positive int size,
-            HttpServletRequest request
+            @RequestParam(defaultValue = "10") @Positive int size
     ) {
         PublicEventSearchParams params = PublicEventSearchParams.builder()
                 .text(text)
@@ -45,13 +43,31 @@ public class PublicEventController {
                 .sort(sort)
                 .from(from)
                 .size(size)
-                .request(request)
                 .build();
+
         return eventService.getPublicEvents(params);
     }
 
+    @GetMapping("/recommendations")
+    public List<EventShortDto> getRecommendations(
+            @RequestHeader("X-EWM-USER-ID") long userId
+    ) {
+        return eventService.getRecommendations(userId);
+    }
+
+    @PutMapping("/{eventId}/like")
+    public void likeEvent(
+            @PathVariable Long eventId,
+            @RequestHeader("X-EWM-USER-ID") long userId
+    ) {
+        eventService.likeEvent(eventId, userId);
+    }
+
     @GetMapping("/{id}")
-    public EventFullDto getEvent(@PathVariable Long id, HttpServletRequest request) {
-        return eventService.getPublicEvent(id, request);
+    public EventFullDto getEvent(
+            @PathVariable Long id,
+            @RequestHeader("X-EWM-USER-ID") long userId
+    ) {
+        return eventService.getPublicEvent(id, userId);
     }
 }
