@@ -49,16 +49,31 @@ public class SimilarityService {
 
         userWeights.put(userId, newWeight);
 
-        double newEventWeightSum =
-                eventWeightSums.getOrDefault(eventId, 0.0)
-                        + newWeight
-                        - oldWeight;
-
-        eventWeightSums.put(
+        eventWeightSums.merge(
                 eventId,
-                newEventWeightSum
+                newWeight - oldWeight,
+                Double::sum
         );
 
+        updatePairContributions(
+                eventId,
+                userId,
+                oldWeight,
+                newWeight
+        );
+
+        publishUpdatedSimilarities(
+                eventId,
+                action
+        );
+    }
+
+    private void updatePairContributions(
+            long eventId,
+            long userId,
+            double oldWeight,
+            double newWeight
+    ) {
         for (Map.Entry<Long, Map<Long, Double>> entry
                 : eventUserWeights.entrySet()) {
 
@@ -78,32 +93,48 @@ public class SimilarityService {
             EventPair pair =
                     EventPair.of(eventId, otherEventId);
 
-            double oldContribution =
-                    Math.min(oldWeight, otherWeight);
+            double contributionDelta =
+                    Math.min(newWeight, otherWeight)
+                            - Math.min(oldWeight, otherWeight);
 
-            double newContribution =
-                    Math.min(newWeight, otherWeight);
-
-            double minWeightSum =
-                    minWeightSums.getOrDefault(pair, 0.0)
-                            + newContribution
-                            - oldContribution;
-
-            minWeightSums.put(
+            minWeightSums.merge(
                     pair,
-                    minWeightSum
+                    contributionDelta,
+                    Double::sum
             );
+        }
+    }
 
-            double otherEventWeightSum =
+    private void publishUpdatedSimilarities(
+            long changedEventId,
+            UserActionAvro action
+    ) {
+        for (Map.Entry<EventPair, Double> entry
+                : minWeightSums.entrySet()) {
+
+            EventPair pair = entry.getKey();
+
+            if (pair.eventA() != changedEventId
+                    && pair.eventB() != changedEventId) {
+                continue;
+            }
+
+            double firstWeightSum =
                     eventWeightSums.getOrDefault(
-                            otherEventId,
+                            pair.eventA(),
+                            0.0
+                    );
+
+            double secondWeightSum =
+                    eventWeightSums.getOrDefault(
+                            pair.eventB(),
                             0.0
                     );
 
             double denominator =
                     Math.sqrt(
-                            newEventWeightSum
-                                    * otherEventWeightSum
+                            firstWeightSum
+                                    * secondWeightSum
                     );
 
             if (denominator == 0.0) {
@@ -111,7 +142,7 @@ public class SimilarityService {
             }
 
             double similarity =
-                    minWeightSum / denominator;
+                    entry.getValue() / denominator;
 
             EventSimilarityAvro result =
                     EventSimilarityAvro.newBuilder()
