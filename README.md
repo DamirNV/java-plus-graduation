@@ -477,7 +477,7 @@ ANALYZER
 
 Большинство сервисов запускается на динамических внутренних портах.
 
-`gateway-server` использует фиксированный порт `8080`.
+`gateway-server` использует фиксированный внутренний порт `8080`. Основной внешний REST API доступен на host-порту `8080`; дополнительный mapping `9090 -> 8080` сохранён для совместимости с автоматическими CI-тестами.
 
 ## Config Server
 
@@ -489,6 +489,22 @@ Config Server также регистрируется в Eureka и исполь�
 spring.cloud.config.discovery.enabled=true
 spring.cloud.config.discovery.service-id=config-server
 ~~~
+
+В `application.properties` клиентов используется:
+
+~~~properties
+spring.config.import=optional:configserver:
+~~~
+
+Это позволяет unit- и WebMvc-тестам запускаться без поднятой инфраструктуры.
+
+При запуске через Docker Compose для Config Client сервисов устанавливается:
+
+~~~text
+SPRING_CLOUD_CONFIG_FAIL_FAST=true
+~~~
+
+Поэтому контейнер не продолжит запуск, если Config Server недоступен через Service Discovery.
 
 Поэтому фиксированный внешний порт Config Server проекту не требуется.
 
