@@ -54,19 +54,57 @@ flowchart TD
     Gateway --> Event[event-service]
     Gateway --> Request[request-service]
     Gateway --> Comment[comment-service]
+    Gateway --> Stats[stats-server]
 
+    %% Business-service communication
+    Event -- OpenFeign --> User
+    Event -- OpenFeign --> Request
+    Event -- OpenFeign --> Comment
+
+    Request -- OpenFeign --> User
+    Request -- OpenFeign --> Event
+
+    Comment -- OpenFeign --> User
+    Comment -- OpenFeign --> Event
+
+    %% Recommendation pipeline
     Event -- "gRPC: VIEW / LIKE" --> Collector[Collector]
     Request -- "gRPC: REGISTER" --> Collector
 
-    Collector -- Kafka --> UserActions[stats.user-actions.v1]
+    Collector -- Kafka --> Actions[stats.user-actions.v1]
 
-    UserActions --> Aggregator[Aggregator]
-    UserActions --> Analyzer[Analyzer]
+    Actions --> Aggregator[Aggregator]
+    Actions --> Analyzer[Analyzer]
 
-    Aggregator -- Kafka --> Similarity[stats.events-similarity.v1]
-    Similarity --> Analyzer
+    Aggregator -- Kafka --> Similarities[stats.events-similarity.v1]
+    Similarities --> Analyzer
 
-    Event -- "gRPC: рекомендации, похожие события, рейтинг" --> Analyzer
+    Event -- "gRPC: рекомендации / рейтинг" --> Analyzer
+
+    %% Infrastructure
+    Eureka[Discovery Server / Eureka]
+    Config[Config Server]
+
+    User -. discovery .-> Eureka
+    Event -. discovery .-> Eureka
+    Request -. discovery .-> Eureka
+    Comment -. discovery .-> Eureka
+    Collector -. discovery .-> Eureka
+    Aggregator -. discovery .-> Eureka
+    Analyzer -. discovery .-> Eureka
+    Gateway -. discovery .-> Eureka
+    Stats -. discovery .-> Eureka
+    Config -. discovery .-> Eureka
+
+    User -. configuration .-> Config
+    Event -. configuration .-> Config
+    Request -. configuration .-> Config
+    Comment -. configuration .-> Config
+    Collector -. configuration .-> Config
+    Aggregator -. configuration .-> Config
+    Analyzer -. configuration .-> Config
+    Gateway -. configuration .-> Config
+    Stats -. configuration .-> Config
 ```
 
 ### Бизнес-сервисы
