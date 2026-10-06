@@ -111,15 +111,18 @@ public class RecommendationService {
             );
         }
 
+        Map<Long, List<EventSimilarity>> similaritiesByEvent =
+                loadSimilarities(interactedEvents);
+
         Map<Long, Double> candidates = new HashMap<>();
 
         for (UserInteraction recent : recentInteractions) {
             long recentEventId = recent.getEventId();
 
             for (EventSimilarity similarity
-                    : similarityRepository.findByEventAOrEventB(
+                    : similaritiesByEvent.getOrDefault(
                             recentEventId,
-                            recentEventId
+                            List.of()
                     )) {
 
                 long candidate =
@@ -166,7 +169,8 @@ public class RecommendationService {
             Double predictedRating =
                     predictRating(
                             candidate,
-                            userRatings
+                            userRatings,
+                            similaritiesByEvent
                     );
 
             if (predictedRating != null) {
@@ -213,16 +217,48 @@ public class RecommendationService {
         return result;
     }
 
+    private Map<Long, List<EventSimilarity>> loadSimilarities(
+            Set<Long> eventIds
+    ) {
+        Map<Long, List<EventSimilarity>> similaritiesByEvent =
+                new HashMap<>();
+
+        if (eventIds.isEmpty()) {
+            return similaritiesByEvent;
+        }
+
+        for (EventSimilarity similarity
+                : similarityRepository.findAllByEventIds(eventIds)) {
+
+            similaritiesByEvent
+                    .computeIfAbsent(
+                            similarity.getEventA(),
+                            ignored -> new ArrayList<>()
+                    )
+                    .add(similarity);
+
+            similaritiesByEvent
+                    .computeIfAbsent(
+                            similarity.getEventB(),
+                            ignored -> new ArrayList<>()
+                    )
+                    .add(similarity);
+        }
+
+        return similaritiesByEvent;
+    }
+
     private Double predictRating(
             long candidateEventId,
-            Map<Long, Double> userRatings
+            Map<Long, Double> userRatings,
+            Map<Long, List<EventSimilarity>> similaritiesByEvent
     ) {
         List<Neighbor> neighbors = new ArrayList<>();
 
         for (EventSimilarity similarity
-                : similarityRepository.findByEventAOrEventB(
+                : similaritiesByEvent.getOrDefault(
                         candidateEventId,
-                        candidateEventId
+                        List.of()
                 )) {
 
             long neighborEventId =
