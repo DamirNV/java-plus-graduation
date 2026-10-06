@@ -196,20 +196,28 @@ public class RecommendationService {
     public List<Recommendation> getInteractionCounts(
             List<Long> eventIds
     ) {
+        if (eventIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Double> ratingsByEvent = new HashMap<>();
+
+        for (UserInteraction interaction
+                : interactionRepository.findByEventIdIn(eventIds)) {
+            ratingsByEvent.merge(
+                    interaction.getEventId(),
+                    interaction.getRating(),
+                    Double::sum
+            );
+        }
+
         List<Recommendation> result = new ArrayList<>();
 
         for (Long eventId : eventIds) {
-            double total = 0.0;
-
-            for (UserInteraction interaction
-                    : interactionRepository.findByEventId(eventId)) {
-                total += interaction.getRating();
-            }
-
             result.add(
                     new Recommendation(
                             eventId,
-                            total
+                            ratingsByEvent.getOrDefault(eventId, 0.0)
                     )
             );
         }

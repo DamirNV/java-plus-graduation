@@ -4,6 +4,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import ru.practicum.ewm.stats.analyzer.model.UserInteraction;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,8 @@ public interface UserInteractionRepository
     List<UserInteraction> findByUserId(Long userId);
 
     List<UserInteraction> findByEventId(Long eventId);
+
+    List<UserInteraction> findByEventIdIn(Collection<Long> eventIds);
 
     List<UserInteraction> findByUserIdOrderByLastInteractionAtDesc(
             Long userId,
