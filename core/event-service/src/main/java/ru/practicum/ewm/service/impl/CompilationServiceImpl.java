@@ -101,6 +101,8 @@ public class CompilationServiceImpl implements CompilationService {
                 ? compilationRepository.findAll(pageable).getContent()
                 : compilationRepository.findAllByPinned(pinned, pageable).getContent();
 
+        compilations = loadCompilationsWithEvents(compilations);
+
         Map<Long, EventShortDto> eventDtos = buildEventDtos(
                 compilations.stream()
                         .filter(compilation -> compilation.getEvents() != null)
@@ -121,6 +123,36 @@ public class CompilationServiceImpl implements CompilationService {
                 ));
 
         return toDtoWithEvents(compilation);
+    }
+
+    private List<Compilation> loadCompilationsWithEvents(
+            List<Compilation> compilations
+    ) {
+        if (compilations.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> compilationIds = compilations.stream()
+                .map(Compilation::getId)
+                .toList();
+
+        Map<Long, Compilation> compilationsWithEvents =
+                compilationRepository
+                        .findAllWithEventsByIds(compilationIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                Compilation::getId,
+                                Function.identity()
+                        ));
+
+        return compilations.stream()
+                .map(compilation ->
+                        compilationsWithEvents.getOrDefault(
+                                compilation.getId(),
+                                compilation
+                        )
+                )
+                .toList();
     }
 
     private CompilationDto toDtoWithEvents(Compilation compilation) {
