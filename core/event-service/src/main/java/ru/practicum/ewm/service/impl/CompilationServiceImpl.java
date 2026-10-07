@@ -20,7 +20,7 @@ import ru.practicum.ewm.port.RequestCountPort;
 import ru.practicum.ewm.repository.CompilationRepository;
 import ru.practicum.ewm.repository.EventRepository;
 import ru.practicum.ewm.service.CompilationService;
-import ru.practicum.ewm.service.StatsHelperService;
+import ru.practicum.stats.client.AnalyzerClient;
 import ru.practicum.ewm.util.OffsetPageRequest;
 
 import java.util.ArrayList;
@@ -42,7 +42,7 @@ public class CompilationServiceImpl implements CompilationService {
     private final UserClient userClient;
     private final RequestCountPort requestCountPort;
     private final CommentCountPort commentCountPort;
-    private final StatsHelperService statsHelperService;
+    private final AnalyzerClient analyzerClient;
 
     @Override
     public CompilationDto addCompilation(NewCompilationDto newCompilationDto) {
@@ -101,6 +101,8 @@ public class CompilationServiceImpl implements CompilationService {
                 ? compilationRepository.findAll(pageable).getContent()
                 : compilationRepository.findAllByPinned(pinned, pageable).getContent();
 
+        compilations = loadCompilationsWithEvents(compilations);
+
         Map<Long, EventShortDto> eventDtos = buildEventDtos(
                 compilations.stream()
                         .filter(compilation -> compilation.getEvents() != null)
@@ -121,6 +123,36 @@ public class CompilationServiceImpl implements CompilationService {
                 ));
 
         return toDtoWithEvents(compilation);
+    }
+
+    private List<Compilation> loadCompilationsWithEvents(
+            List<Compilation> compilations
+    ) {
+        if (compilations.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> compilationIds = compilations.stream()
+                .map(Compilation::getId)
+                .toList();
+
+        Map<Long, Compilation> compilationsWithEvents =
+                compilationRepository
+                        .findAllWithEventsByIds(compilationIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                Compilation::getId,
+                                Function.identity()
+                        ));
+
+        return compilations.stream()
+                .map(compilation ->
+                        compilationsWithEvents.getOrDefault(
+                                compilation.getId(),
+                                compilation
+                        )
+                )
+                .toList();
     }
 
     private CompilationDto toDtoWithEvents(Compilation compilation) {
@@ -176,9 +208,13 @@ public class CompilationServiceImpl implements CompilationService {
                         Function.identity()
                 ));
 
-        Map<Long, Long> confirmedRequests = requestCountPort.countConfirmedRequests(eventIds);
-        Map<Long, Long> commentsCount = commentCountPort.countPublishedComments(eventIds);
-        Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, Long> confirmedRequests =
+                requestCountPort.countConfirmedRequests(eventIds);
+
+        Map<Long, Long> commentsCount =
+                commentCountPort.countPublishedComments(eventIds);
+
+        Map<Long, Double> ratings = getRatings(eventIds);
 
         return events.stream()
                 .collect(Collectors.toMap(
@@ -186,9 +222,18 @@ public class CompilationServiceImpl implements CompilationService {
                         event -> toShortDto(
                                 event,
                                 users.get(event.getInitiatorId()),
-                                confirmedRequests.getOrDefault(event.getId(), 0L),
-                                views.getOrDefault(event.getId(), 0L),
-                                commentsCount.getOrDefault(event.getId(), 0L)
+                                confirmedRequests.getOrDefault(
+                                        event.getId(),
+                                        0L
+                                ),
+                                ratings.getOrDefault(
+                                        event.getId(),
+                                        0.0
+                                ),
+                                commentsCount.getOrDefault(
+                                        event.getId(),
+                                        0L
+                                )
                         )
                 ));
     }
@@ -197,14 +242,28 @@ public class CompilationServiceImpl implements CompilationService {
             Event event,
             UserShortDto initiator,
             long confirmedRequests,
-            long views,
+            double rating,
             long commentsCount
     ) {
         EventShortDto dto = eventMapper.toShortDto(event);
         dto.setInitiator(initiator);
         dto.setConfirmedRequests(confirmedRequests);
-        dto.setViews(views);
+        dto.setRating(rating);
         dto.setComments(commentsCount);
         return dto;
+    }
+
+    private Map<Long, Double> getRatings(List<Long> eventIds) {
+        try {
+            return analyzerClient.getInteractionsCountMap(eventIds);
+        } catch (Exception e) {
+            log.warn(
+                    "Cannot get ratings for events {}",
+                    eventIds,
+                    e
+            );
+
+            return Map.of();
+        }
     }
 }

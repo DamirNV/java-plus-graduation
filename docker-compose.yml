@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: infra/discovery-server/Dockerfile
     ports:
-      - "8761:8761"
+      - "18761:8761"
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://localhost:8761/eureka/apps >/dev/null" ]
       interval: 2s
@@ -17,16 +17,19 @@ services:
     build:
       context: .
       dockerfile: infra/config-server/Dockerfile
-    ports:
-      - "8888:8888"
+
     depends_on:
       discovery-server:
         condition: service_healthy
     environment:
-      SERVER_PORT: 8888
+
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://localhost:8888/gateway-server/default >/dev/null" ]
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS http://discovery-server:8761/eureka/apps/CONFIG-SERVER
+          | grep -q '<status>UP</status>'
       interval: 2s
       timeout: 2s
       retries: 30
@@ -118,6 +121,122 @@ services:
       retries: 10
 
 
+
+  kafka:
+    image: apache/kafka:3.8.1
+    ports:
+      - "19094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:19094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic stats.user-actions.v1 --partitions 1 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic stats.events-similarity.v1 --partitions 1 --replication-factor 1
+  collector:
+    build:
+      context: .
+      dockerfile: stats-service/collector/Dockerfile
+    depends_on:
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: stats-service/aggregator/Dockerfile
+    depends_on:
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+
+  analyzer-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: analyzer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - analyzer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d analyzer" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: stats-service/analyzer/Dockerfile
+    depends_on:
+      analyzer-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: on-failure
+    environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://analyzer-db:5432/analyzer
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
   stats-server:
     build:
       context: .
@@ -127,31 +246,32 @@ services:
         condition: service_healthy
       config-server:
         condition: service_healthy
-    ports:
-      - "9090:9090"
+
     restart: on-failure
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          curl -fsS http://localhost:9090/actuator/health
-          | grep -q '"status":"UP"'
-          && curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
+          curl -fsS http://discovery-server:8761/eureka/apps/STATS-SERVER
           | grep -q '<status>UP</status>'
       interval: 2s
       timeout: 2s
       retries: 45
       start_period: 5s
     environment:
-      SERVER_PORT: 9090
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
+
       POSTGRES_HOST: stats-db
       POSTGRES_PORT: 5432
       POSTGRES_DB: stats
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   user-service:
@@ -175,12 +295,16 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/users
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   request-service:
@@ -204,12 +328,16 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
       SPRING_DATASOURCE_URL: jdbc:postgresql://request-db:5432/requests
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   event-service:
@@ -220,8 +348,6 @@ services:
       event-db:
         condition: service_healthy
       config-server:
-        condition: service_healthy
-      stats-server:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -239,12 +365,16 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
       SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/events
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   comment-service:
@@ -274,12 +404,16 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
       SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/comments
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
   gateway-server:
@@ -288,12 +422,11 @@ services:
       dockerfile: infra/gateway-server/Dockerfile
     ports:
       - "8080:8080"
+      - "9090:8080"
     depends_on:
       discovery-server:
         condition: service_healthy
       config-server:
-        condition: service_healthy
-      stats-server:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -311,12 +444,17 @@ services:
       retries: 45
       start_period: 5s
     environment:
+      SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_ATTEMPTS: "10"
+      SPRING_CLOUD_CONFIG_RETRY_INITIAL_INTERVAL: "1000"
+      SPRING_CLOUD_CONFIG_RETRY_MAX_INTERVAL: "5000"
+      SPRING_CLOUD_CONFIG_RETRY_MULTIPLIER: "1.5"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-server:8761/eureka/
-      SPRING_CLOUD_CONFIG_DISCOVERY_ENABLED: "false"
-      SPRING_CLOUD_CONFIG_URI: http://config-server:8888
+
 
 
 volumes:
+  analyzer-db-data:
   stats-db-data:
   user-db-data:
   request-db-data:

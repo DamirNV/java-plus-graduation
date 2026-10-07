@@ -30,6 +30,12 @@ public interface RequestRepository
             Long requesterId
     );
 
+    boolean existsByEventIdAndRequesterIdAndStatus(
+            Long eventId,
+            Long requesterId,
+            RequestStatus status
+    );
+
     long countByEventIdAndStatus(
             Long eventId,
             RequestStatus status

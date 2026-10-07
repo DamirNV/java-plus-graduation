@@ -46,4 +46,17 @@ public class InternalRequestController {
                         )
                 );
     }
+
+    @GetMapping("/confirmed/exists")
+    public boolean hasConfirmedRequest(
+            @RequestParam Long eventId,
+            @RequestParam Long userId
+    ) {
+        return requestRepository
+                .existsByEventIdAndRequesterIdAndStatus(
+                        eventId,
+                        userId,
+                        RequestStatus.CONFIRMED
+                );
+    }
 }

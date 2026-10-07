@@ -1,6 +1,5 @@
 package ru.practicum.ewm.dto;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,5 +26,4 @@ public class PublicEventSearchParams {
     @Builder.Default
     private int size = 10;
 
-    private HttpServletRequest request;
 }

@@ -1,12 +1,12 @@
 package ru.practicum.ewm.service.impl;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import ru.practicum.ewm.client.RequestClient;
 import ru.practicum.ewm.client.UserClient;
 import ru.practicum.ewm.dto.*;
 import ru.practicum.ewm.exception.ConflictException;
@@ -17,7 +17,10 @@ import ru.practicum.ewm.port.CommentCountPort;
 import ru.practicum.ewm.port.RequestCountPort;
 import ru.practicum.ewm.repository.*;
 import ru.practicum.ewm.service.EventService;
-import ru.practicum.ewm.service.StatsHelperService;
+import ru.practicum.ewm.stats.proto.ActionTypeProto;
+import ru.practicum.ewm.stats.proto.RecommendedEventProto;
+import ru.practicum.stats.client.AnalyzerClient;
+import ru.practicum.stats.client.CollectorClient;
 import ru.practicum.ewm.specification.EventSpecification;
 import ru.practicum.ewm.util.OffsetPageRequest;
 
@@ -38,6 +41,7 @@ public class EventServiceImpl implements EventService {
 
     private static final long USER_MIN_HOURS_BEFORE_EVENT = 2L;
     private static final long ADMIN_MIN_HOURS_BEFORE_EVENT = 1L;
+    private static final int DEFAULT_RECOMMENDATIONS_LIMIT = 10;
 
     private final EventRepository eventRepository;
     private final UserClient userClient;
@@ -45,7 +49,9 @@ public class EventServiceImpl implements EventService {
     private final RequestCountPort requestCountPort;
     private final CommentCountPort commentCountPort;
     private final EventMapper eventMapper;
-    private final StatsHelperService statsHelperService;
+    private final RequestClient requestClient;
+    private final AnalyzerClient analyzerClient;
+    private final CollectorClient collectorClient;
 
     @Override
     public List<EventShortDto> getPublicEvents(PublicEventSearchParams params) {
@@ -67,10 +73,9 @@ public class EventServiceImpl implements EventService {
                 end
         );
 
-        statsHelperService.hit(params.getRequest());
 
         if (Boolean.TRUE.equals(params.getOnlyAvailable())
-                || "VIEWS".equalsIgnoreCase(params.getSort())) {
+                || isRatingSort(params.getSort())) {
             return getPublicEventsWithPostFiltering(specification, params);
         }
 
@@ -106,9 +111,9 @@ public class EventServiceImpl implements EventService {
 
         List<EventShortDto> result = toShortDtos(events, confirmedRequests);
 
-        if ("VIEWS".equalsIgnoreCase(params.getSort())) {
+        if (isRatingSort(params.getSort())) {
             result = result.stream()
-                    .sorted(Comparator.comparing(EventShortDto::getViews).reversed())
+                    .sorted(Comparator.comparing(EventShortDto::getRating).reversed())
                     .toList();
         }
 
@@ -119,21 +124,43 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public EventFullDto getPublicEvent(Long eventId, HttpServletRequest request) {
+    public EventFullDto getPublicEvent(
+            Long eventId,
+            long userId
+    ) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() ->
-                        new NotFoundException("Event with id=" + eventId + " was not found"));
+                        new NotFoundException(
+                                "Event with id=" +
+                                        eventId +
+                                        " was not found"
+                        )
+                );
 
         if (event.getState() != EventState.PUBLISHED) {
-            throw new NotFoundException("Event with id=" + eventId + " was not found");
+            throw new NotFoundException(
+                    "Event with id=" +
+                            eventId +
+                            " was not found"
+            );
         }
 
-        statsHelperService.hit(request);
+        collectorClient.sendUserAction(
+                userId,
+                eventId,
+                ActionTypeProto.ACTION_VIEW
+        );
 
-        long views = statsHelperService.getViews(event);
-        long commentsCount = commentCountPort.countPublishedComments(eventId);
+        double rating = getRating(event);
 
-        return toFullDto(event, views, commentsCount);
+        long commentsCount =
+                commentCountPort.countPublishedComments(eventId);
+
+        return toFullDto(
+                event,
+                rating,
+                commentsCount
+        );
     }
 
     @Override
@@ -170,21 +197,39 @@ public class EventServiceImpl implements EventService {
 
         event = eventRepository.save(event);
 
-        return toFullDto(event, 0L, 0L, 0L, initiator);
+        return toFullDto(event, 0L, 0.0, 0L, initiator);
     }
 
     @Override
-    public EventFullDto getUserEvent(Long userId, Long eventId) {
+    public EventFullDto getUserEvent(
+            Long userId,
+            Long eventId
+    ) {
         checkUserExists(userId);
 
-        Event event = eventRepository.findByIdAndInitiatorId(eventId, userId)
+        Event event = eventRepository
+                .findByIdAndInitiatorId(
+                        eventId,
+                        userId
+                )
                 .orElseThrow(() ->
-                        new NotFoundException("Event with id=" + eventId + " was not found"));
+                        new NotFoundException(
+                                "Event with id=" +
+                                        eventId +
+                                        " was not found"
+                        )
+                );
 
-        long views = statsHelperService.getViews(event);
-        long commentsCount = commentCountPort.countPublishedComments(eventId);
+        double rating = getRating(event);
 
-        return toFullDto(event, views, commentsCount);
+        long commentsCount =
+                commentCountPort.countPublishedComments(eventId);
+
+        return toFullDto(
+                event,
+                rating,
+                commentsCount
+        );
     }
 
     @Override
@@ -254,10 +299,16 @@ public class EventServiceImpl implements EventService {
 
         event = eventRepository.save(event);
 
-        long views = statsHelperService.getViews(event);
-        long commentsCount = commentCountPort.countPublishedComments(eventId);
+        double rating = getRating(event);
 
-        return toFullDto(event, views, commentsCount);
+        long commentsCount =
+                commentCountPort.countPublishedComments(eventId);
+
+        return toFullDto(
+                event,
+                rating,
+                commentsCount
+        );
     }
 
     @Override
@@ -288,7 +339,7 @@ public class EventServiceImpl implements EventService {
 
         List<Event> events = eventRepository.findAll(specification, pageable).getContent();
 
-        Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, Double> ratings = getRatings(events);
         Map<Long, UserShortDto> users = getUsers(events);
         Map<Long, Long> commentsCount = getCommentsCount(events);
         Map<Long, Long> confirmedRequests = getConfirmedRequests(events);
@@ -296,9 +347,18 @@ public class EventServiceImpl implements EventService {
         return events.stream()
                 .map(event -> toFullDto(
                         event,
-                        confirmedRequests.getOrDefault(event.getId(), 0L),
-                        views.getOrDefault(event.getId(), 0L),
-                        commentsCount.getOrDefault(event.getId(), 0L),
+                        confirmedRequests.getOrDefault(
+                                event.getId(),
+                                0L
+                        ),
+                        ratings.getOrDefault(
+                                event.getId(),
+                                0.0
+                        ),
+                        commentsCount.getOrDefault(
+                                event.getId(),
+                                0L
+                        ),
                         users.get(event.getInitiatorId())
                 ))
                 .toList();
@@ -386,10 +446,102 @@ public class EventServiceImpl implements EventService {
 
         event = eventRepository.save(event);
 
-        long views = statsHelperService.getViews(event);
-        long commentsCount = commentCountPort.countPublishedComments(eventId);
+        double rating = getRating(event);
 
-        return toFullDto(event, views, commentsCount);
+        long commentsCount =
+                commentCountPort.countPublishedComments(eventId);
+
+        return toFullDto(
+                event,
+                rating,
+                commentsCount
+        );
+    }
+
+    @Override
+    public List<EventShortDto> getRecommendations(long userId) {
+        checkUserExists(userId);
+
+        List<RecommendedEventProto> recommendations =
+                analyzerClient
+                        .getRecommendationsForUser(
+                                userId,
+                                DEFAULT_RECOMMENDATIONS_LIMIT
+                        )
+                        .toList();
+
+        if (recommendations.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> eventIds = recommendations.stream()
+                .map(RecommendedEventProto::getEventId)
+                .toList();
+
+        Map<Long, Event> eventsById =
+                eventRepository.findAllById(eventIds)
+                        .stream()
+                        .filter(event ->
+                                event.getState() ==
+                                        EventState.PUBLISHED
+                        )
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        Event::getId,
+                                        event -> event
+                                )
+                        );
+
+        List<Event> events = recommendations.stream()
+                .map(recommendation ->
+                        eventsById.get(
+                                recommendation.getEventId()
+                        )
+                )
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        if (events.isEmpty()) {
+            return List.of();
+        }
+
+        return toShortDtos(events);
+    }
+
+    @Override
+    public void likeEvent(
+            Long eventId,
+            long userId
+    ) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() ->
+                        new NotFoundException(
+                                "Event with id=" +
+                                        eventId +
+                                        " was not found"
+                        )
+                );
+
+        boolean hasConfirmedRequest =
+                requestClient.hasConfirmedRequest(
+                        eventId,
+                        userId
+                );
+
+        boolean eventHasStarted =
+                !event.getEventDate().isAfter(LocalDateTime.now());
+
+        if (!hasConfirmedRequest || !eventHasStarted) {
+            throw new IllegalArgumentException(
+                    "User can like only attended events"
+            );
+        }
+
+        collectorClient.sendUserAction(
+                userId,
+                eventId,
+                ActionTypeProto.ACTION_LIKE
+        );
     }
 
     private List<EventShortDto> toShortDtos(List<Event> events) {
@@ -400,16 +552,25 @@ public class EventServiceImpl implements EventService {
             List<Event> events,
             Map<Long, Long> confirmedRequests
     ) {
-        Map<Long, Long> views = statsHelperService.getViews(events);
+        Map<Long, Double> ratings = getRatings(events);
         Map<Long, UserShortDto> users = getUsers(events);
         Map<Long, Long> commentsCount = getCommentsCount(events);
 
         return events.stream()
                 .map(event -> toShortDto(
                         event,
-                        confirmedRequests.getOrDefault(event.getId(), 0L),
-                        views.getOrDefault(event.getId(), 0L),
-                        commentsCount.getOrDefault(event.getId(), 0L),
+                        confirmedRequests.getOrDefault(
+                                event.getId(),
+                                0L
+                        ),
+                        ratings.getOrDefault(
+                                event.getId(),
+                                0.0
+                        ),
+                        commentsCount.getOrDefault(
+                                event.getId(),
+                                0L
+                        ),
                         users.get(event.getInitiatorId())
                 ))
                 .toList();
@@ -418,7 +579,7 @@ public class EventServiceImpl implements EventService {
     private EventShortDto toShortDto(
             Event event,
             long confirmedRequests,
-            long views,
+            double rating,
             long commentsCount,
             UserShortDto initiator
     ) {
@@ -426,17 +587,23 @@ public class EventServiceImpl implements EventService {
 
         dto.setInitiator(initiator);
         dto.setConfirmedRequests(confirmedRequests);
-        dto.setViews(views);
+        dto.setRating(rating);
         dto.setComments(commentsCount);
 
         return dto;
     }
 
-    private EventFullDto toFullDto(Event event, long views, long commentsCount) {
+    private EventFullDto toFullDto(
+            Event event,
+            double rating,
+            long commentsCount
+    ) {
         return toFullDto(
                 event,
-                requestCountPort.countConfirmedRequests(event.getId()),
-                views,
+                requestCountPort.countConfirmedRequests(
+                        event.getId()
+                ),
+                rating,
                 commentsCount,
                 getUser(event.getInitiatorId())
         );
@@ -445,7 +612,7 @@ public class EventServiceImpl implements EventService {
     private EventFullDto toFullDto(
             Event event,
             long confirmedRequests,
-            long views,
+            double rating,
             long commentsCount,
             UserShortDto initiator
     ) {
@@ -453,10 +620,43 @@ public class EventServiceImpl implements EventService {
 
         dto.setInitiator(initiator);
         dto.setConfirmedRequests(confirmedRequests);
-        dto.setViews(views);
+        dto.setRating(rating);
         dto.setComments(commentsCount);
 
         return dto;
+    }
+
+    private double getRating(Event event) {
+        return getRatings(List.of(event))
+                .getOrDefault(
+                        event.getId(),
+                        0.0
+                );
+    }
+
+    private Map<Long, Double> getRatings(
+            List<Event> events
+    ) {
+        if (events == null || events.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> eventIds = events.stream()
+                .map(Event::getId)
+                .toList();
+
+        try {
+            return analyzerClient
+                    .getInteractionsCountMap(eventIds);
+        } catch (Exception e) {
+            log.warn(
+                    "Cannot get ratings for events {}",
+                    eventIds,
+                    e
+            );
+
+            return Map.of();
+        }
     }
 
     private Map<Long, UserShortDto> getUsers(List<Event> events) {
@@ -533,11 +733,17 @@ public class EventServiceImpl implements EventService {
     private void validateSort(String sort) {
         if (sort != null
                 && !"EVENT_DATE".equalsIgnoreCase(sort)
+                && !"RATING".equalsIgnoreCase(sort)
                 && !"VIEWS".equalsIgnoreCase(sort)) {
             throw new IllegalArgumentException(
-                    "sort must be EVENT_DATE or VIEWS"
+                    "sort must be EVENT_DATE or RATING"
             );
         }
+    }
+
+    private boolean isRatingSort(String sort) {
+        return "RATING".equalsIgnoreCase(sort)
+                || "VIEWS".equalsIgnoreCase(sort);
     }
 
     private String normalizeText(String text) {

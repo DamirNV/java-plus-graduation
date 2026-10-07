@@ -25,6 +25,9 @@ import ru.practicum.ewm.util.OffsetPageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -74,12 +77,11 @@ public class CommentServiceImpl implements CommentService {
                 size
         );
 
-        return commentRepository
-                .findByAuthorId(userId, pageable)
-                .getContent()
-                .stream()
-                .map(this::toDto)
-                .toList();
+        return toDtos(
+                commentRepository
+                        .findByAuthorId(userId, pageable)
+                        .getContent()
+        );
     }
 
     @Override
@@ -174,16 +176,15 @@ public class CommentServiceImpl implements CommentService {
                 )
         );
 
-        List<CommentDto> comments = commentRepository
-                .findByEventIdAndStatus(
-                        eventId,
-                        CommentStatus.PUBLISHED,
-                        pageable
-                )
-                .getContent()
-                .stream()
-                .map(this::toDto)
-                .toList();
+        List<CommentDto> comments = toDtos(
+                commentRepository
+                        .findByEventIdAndStatus(
+                                eventId,
+                                CommentStatus.PUBLISHED,
+                                pageable
+                        )
+                        .getContent()
+        );
 
         statsHelperService.hit(request);
 
@@ -240,15 +241,14 @@ public class CommentServiceImpl implements CommentService {
                 )
         );
 
-        return commentRepository
-                .findAllByStatus(
-                        commentStatus,
-                        pageable
-                )
-                .getContent()
-                .stream()
-                .map(this::toDto)
-                .toList();
+        return toDtos(
+                commentRepository
+                        .findAllByStatus(
+                                commentStatus,
+                                pageable
+                        )
+                        .getContent()
+        );
     }
 
     @Override
@@ -298,6 +298,50 @@ public class CommentServiceImpl implements CommentService {
         }
 
         commentRepository.deleteById(commentId);
+    }
+
+    private List<CommentDto> toDtos(List<Comment> comments) {
+        if (comments.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> authorIds = comments.stream()
+                .map(Comment::getAuthorId)
+                .distinct()
+                .toList();
+
+        List<UserShortDto> users =
+                userClient.getUsers(authorIds);
+
+        Map<Long, UserShortDto> usersById = users.stream()
+                .collect(
+                        Collectors.toMap(
+                                UserShortDto::getId,
+                                Function.identity()
+                        )
+                );
+
+        return comments.stream()
+                .map(comment -> {
+                    CommentDto dto =
+                            commentMapper.toDto(comment);
+
+                    UserShortDto author =
+                            usersById.get(comment.getAuthorId());
+
+                    if (author == null) {
+                        throw new NotFoundException(
+                                "User with id=" +
+                                        comment.getAuthorId() +
+                                        " was not found"
+                        );
+                    }
+
+                    dto.setAuthor(author);
+
+                    return dto;
+                })
+                .toList();
     }
 
     private CommentDto toDto(Comment comment) {
